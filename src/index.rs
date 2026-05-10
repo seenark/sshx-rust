@@ -35,7 +35,7 @@ impl ConfigIndex {
             }
         }
 
-        for (_idx, host) in hosts.iter().enumerate() {
+        for host in &hosts {
             if let Some(ref requires) = host.sshx.requires {
                 let requires_exists = hosts.iter().any(|h| h.name == *requires);
                 if !requires_exists {
@@ -47,20 +47,24 @@ impl ConfigIndex {
             }
         }
 
+        let name_to_idx: HashMap<&str, usize> = hosts.iter().enumerate().map(|(i, h)| (h.name.as_str(), i)).collect();
+
         for (idx, host) in hosts.iter().enumerate() {
             if let Some(ref requires) = host.sshx.requires {
                 let mut visited = std::collections::HashSet::new();
                 visited.insert(idx);
                 let mut current_requires = Some(requires.as_str());
                 while let Some(req) = current_requires {
-                    if let Some(req_host) = hosts.iter().find(|h| h.name == *req) {
+                    if let Some(&req_idx) = name_to_idx.get(req) {
+                        let req_host = &hosts[req_idx];
                         if let Some(ref req_requires) = req_host.sshx.requires {
-                            if visited.contains(&hosts.iter().position(|h| h.name == *req_requires).unwrap()) {
+                            let req_requires_idx = *name_to_idx.get(req_requires.as_str()).expect("requires target must exist");
+                            if visited.contains(&req_requires_idx) {
                                 return Err(SshxError::CircularRequires {
                                     host: host.name.clone(),
                                 });
                             }
-                            visited.insert(hosts.iter().position(|h| h.name == *req_requires).unwrap());
+                            visited.insert(req_requires_idx);
                             current_requires = Some(req_requires.as_str());
                         } else {
                             break;

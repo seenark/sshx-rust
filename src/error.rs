@@ -103,31 +103,87 @@ impl SshxError {
         }
     }
 
-    pub fn title(&self) -> &'static str {
+    pub fn title(&self) -> String {
         match self {
-            Self::ConfigFileNotFound { .. } => "SSH config file not found",
-            Self::ConfigFileUnreadable { .. } => "SSH config file unreadable",
-            Self::AnnotationParseError { .. } => "Annotation parse error",
-            Self::UnknownAnnotationKey { .. } => "Unknown annotation key",
-            Self::DuplicateAlias { .. } => "Duplicate alias",
-            Self::HostNotFound { .. } => "Host not found",
-            Self::AliasAmbiguous { .. } => "Alias ambiguous",
-            Self::RequiresHostNotFound { .. } => "Required host not found",
-            Self::CircularRequires { .. } => "Circular requires dependency",
-            Self::TunnelSpawnFailed { .. } => "Tunnel spawn failed",
-            Self::TunnelPortBusy { .. } => "Tunnel port busy",
-            Self::TunnelTimeout { .. } => "Tunnel timeout",
-            Self::TunnelDiedEarly { .. } => "Tunnel died early",
-            Self::SshpassNotFound { .. } => "sshpass not found in PATH",
-            Self::SshNotFound { .. } => "ssh not found in PATH",
-            Self::SshCommandFailed { .. } => "SSH command failed",
-            Self::ClipboardUnavailable { .. } => "Clipboard unavailable",
-            Self::ConfigWriteFailed { .. } => "Config write failed",
-            Self::HostAlreadyExists { .. } => "Host already exists",
-            Self::InvalidHostName { .. } => "Invalid host name",
-            Self::InvalidPort { .. } => "Invalid port",
-            Self::SshxConfigParseFailed { .. } => "SSHX config parse failed",
-            Self::SshxConfigWriteFailed { .. } => "SSHX config write failed",
+            Self::ConfigFileNotFound { path } => format!("SSH config file not found: {}", path.display()),
+            Self::ConfigFileUnreadable { path, reason } => format!("SSH config file unreadable: {} — {}", path.display(), reason),
+            Self::AnnotationParseError { file, line, raw } => format!("Annotation parse error in {}:{}: `{}`", file.display(), line, raw),
+            Self::UnknownAnnotationKey { file, line, key } => format!("Unknown annotation key `{}` in {}:{}", key, file.display(), line),
+            Self::DuplicateAlias { alias, host1, host2 } => format!("Duplicate alias `{alias}` used by both {host1} and {host2}"),
+            Self::HostNotFound { input } => format!("Host not found: {input}"),
+            Self::AliasAmbiguous { input, matches } => format!("Alias ambiguous: `{input}` matches [{}]", matches.join(", ")),
+            Self::RequiresHostNotFound { host, requires } => format!("Required host not found: `{requires}` required by {host}"),
+            Self::CircularRequires { host } => format!("Circular requires dependency: {host}"),
+            Self::TunnelSpawnFailed { jump_host, reason } => format!("Tunnel spawn failed: {jump_host} — {reason}"),
+            Self::TunnelPortBusy { port } => format!("Tunnel port {port} is already in use"),
+            Self::TunnelTimeout { jump_host, timeout_s } => format!("Tunnel timeout — {jump_host} did not become ready in {timeout_s}s"),
+            Self::TunnelDiedEarly { jump_host, exit_code } => format!("Tunnel died early: {jump_host} (exit code: {:?})", exit_code),
+            Self::SshpassNotFound => "sshpass not found in PATH".to_string(),
+            Self::SshNotFound => "ssh not found in PATH".to_string(),
+            Self::SshCommandFailed { exit_code } => format!("SSH command failed (exit code: {:?})", exit_code),
+            Self::ClipboardUnavailable { reason } => format!("Clipboard unavailable: {reason}"),
+            Self::ConfigWriteFailed { path, reason } => format!("Config write failed: {} — {}", path.display(), reason),
+            Self::HostAlreadyExists { name } => format!("Host already exists: {name}"),
+            Self::InvalidHostName { name } => format!("Invalid host name: {name}"),
+            Self::InvalidPort { input } => format!("Invalid port: {input}"),
+            Self::SshxConfigParseFailed { path, reason } => format!("SSHX config parse failed: {} — {}", path.display(), reason),
+            Self::SshxConfigWriteFailed { path, reason } => format!("SSHX config write failed: {} — {}", path.display(), reason),
+        }
+    }
+
+    fn context_label(&self) -> Option<&'static str> {
+        match self {
+            Self::ConfigFileNotFound { .. } => Some("Path"),
+            Self::ConfigFileUnreadable { .. } => Some("Path"),
+            Self::AnnotationParseError { .. } => Some("File"),
+            Self::UnknownAnnotationKey { .. } => Some("File"),
+            Self::DuplicateAlias { .. } => Some("Alias"),
+            Self::HostNotFound { .. } => Some("Input"),
+            Self::AliasAmbiguous { .. } => Some("Input"),
+            Self::RequiresHostNotFound { .. } => Some("Host"),
+            Self::CircularRequires { .. } => Some("Host"),
+            Self::TunnelSpawnFailed { .. } => Some("Host"),
+            Self::TunnelPortBusy { .. } => Some("Port"),
+            Self::TunnelTimeout { .. } => Some("Host"),
+            Self::TunnelDiedEarly { .. } => Some("Host"),
+            Self::SshpassNotFound => None,
+            Self::SshNotFound => None,
+            Self::SshCommandFailed { .. } => Some("Exit code"),
+            Self::ClipboardUnavailable { .. } => Some("Reason"),
+            Self::ConfigWriteFailed { .. } => Some("Path"),
+            Self::HostAlreadyExists { .. } => Some("Name"),
+            Self::InvalidHostName { .. } => Some("Name"),
+            Self::InvalidPort { .. } => Some("Input"),
+            Self::SshxConfigParseFailed { .. } => Some("Path"),
+            Self::SshxConfigWriteFailed { .. } => Some("Path"),
+        }
+    }
+
+    fn context_value(&self) -> Option<String> {
+        match self {
+            Self::ConfigFileNotFound { path } => Some(path.display().to_string()),
+            Self::ConfigFileUnreadable { path, .. } => Some(path.display().to_string()),
+            Self::AnnotationParseError { file, line, .. } => Some(format!("{}:{}", file.display(), line)),
+            Self::UnknownAnnotationKey { file, line, .. } => Some(format!("{}:{}", file.display(), line)),
+            Self::DuplicateAlias { alias, .. } => Some(alias.clone()),
+            Self::HostNotFound { input } => Some(input.clone()),
+            Self::AliasAmbiguous { input, matches } => Some(format!("{} (matches: {})", input, matches.join(", "))),
+            Self::RequiresHostNotFound { host, .. } => Some(host.clone()),
+            Self::CircularRequires { host } => Some(host.clone()),
+            Self::TunnelSpawnFailed { jump_host, .. } => Some(jump_host.clone()),
+            Self::TunnelPortBusy { port } => Some(port.to_string()),
+            Self::TunnelTimeout { jump_host, .. } => Some(jump_host.clone()),
+            Self::TunnelDiedEarly { jump_host, .. } => Some(jump_host.clone()),
+            Self::SshpassNotFound => None,
+            Self::SshNotFound => None,
+            Self::SshCommandFailed { exit_code } => Some(format!("{:?}", exit_code)),
+            Self::ClipboardUnavailable { reason } => Some(reason.clone()),
+            Self::ConfigWriteFailed { path, .. } => Some(path.display().to_string()),
+            Self::HostAlreadyExists { name } => Some(name.clone()),
+            Self::InvalidHostName { name } => Some(name.clone()),
+            Self::InvalidPort { input } => Some(input.clone()),
+            Self::SshxConfigParseFailed { path, .. } => Some(path.display().to_string()),
+            Self::SshxConfigWriteFailed { path, .. } => Some(path.display().to_string()),
         }
     }
 
@@ -163,13 +219,28 @@ impl SshxError {
         let code = self.code();
         let title = self.title();
         let hint = self.hint();
-        format!(
-            "{} [{}] {}\n  Hint: {}",
-            style("✗").red(),
-            style(code).bold(),
-            title,
-            hint
-        )
+        let context_label = self.context_label();
+        let context_value = self.context_value();
+
+        match (context_label, context_value) {
+            (Some(label), Some(value)) => format!(
+                "{} [{}] {}\n  {}:    {}\n  Hint:    {}",
+                style("✗").red(),
+                style(code).bold(),
+                title,
+                label,
+                value,
+                hint
+            ),
+            (None, None) => format!(
+                "{} [{}] {}\n  Hint:    {}",
+                style("✗").red(),
+                style(code).bold(),
+                title,
+                hint
+            ),
+            _ => unreachable!("exhaustive error handling"),
+        }
     }
 }
 

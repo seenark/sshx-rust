@@ -38,7 +38,7 @@ impl Default for SSHHost {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct LocalForward {
     pub local_port: u16,
     pub remote_host: String,
@@ -64,14 +64,14 @@ pub struct SSHXAnnotations {
     pub after_connect: Option<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct SourceLocation {
     pub file: PathBuf,
     pub line_start: usize,
     pub line_end: usize,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TunnelProcess {
     pub jump_host: String,
     pub pid: u32,
@@ -79,7 +79,7 @@ pub struct TunnelProcess {
     pub started_at: SystemTime,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum TunnelStatus {
     NotRunning,
     Running(TunnelProcess),

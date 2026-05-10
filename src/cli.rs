@@ -40,11 +40,11 @@ pub enum ConfigAction {
     Add,
     Edit {
         #[arg(help = "Host alias or name to edit")]
-        host_alias: Option<String>,
+        host_alias: String,
     },
     Remove {
         #[arg(help = "Host alias or name to remove")]
-        host_alias: Option<String>,
+        host_alias: String,
     },
     List {
         #[arg(long, help = "Filter by group")]
@@ -53,7 +53,7 @@ pub enum ConfigAction {
     Validate,
     Show {
         #[arg(help = "Host alias or name to show")]
-        host_alias: Option<String>,
+        host_alias: String,
     },
     Init,
 }

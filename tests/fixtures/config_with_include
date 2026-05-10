@@ -1,0 +1,4 @@
+Include included_configs/*.conf
+
+Host main-host
+    HostName 1.2.3.4

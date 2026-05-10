@@ -1,6 +1,8 @@
 use std::path::{Path, PathBuf};
 use std::fs;
 
+use glob;
+
 use crate::error::SshxError;
 use crate::model::*;
 
@@ -79,6 +81,66 @@ pub fn parse_content(content: &str, file_path: &Path) -> Result<Vec<SSHHost>, Ss
     Ok(hosts)
 }
 
+pub fn parse_with_includes(path: &Path) -> Result<(Vec<SSHHost>, Vec<PathBuf>), SshxError> {
+    let mut all_hosts = Vec::new();
+    let mut all_source_files = Vec::new();
+    let mut visited = std::collections::HashSet::new();
+    parse_recursive(path, &mut all_hosts, &mut all_source_files, &mut visited)?;
+    Ok((all_hosts, all_source_files))
+}
+
+fn parse_recursive(
+    path: &Path,
+    hosts: &mut Vec<SSHHost>,
+    source_files: &mut Vec<PathBuf>,
+    visited: &mut std::collections::HashSet<PathBuf>,
+) -> Result<(), SshxError> {
+    let canonical = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+    if visited.contains(&canonical) {
+        return Ok(());
+    }
+    visited.insert(canonical.clone());
+
+    if !path.exists() {
+        return Err(SshxError::ConfigFileNotFound {
+            path: path.to_path_buf(),
+        });
+    }
+
+    let content = std::fs::read_to_string(path).map_err(|e| SshxError::ConfigFileUnreadable {
+        path: path.to_path_buf(),
+        reason: e.to_string(),
+    })?;
+
+    source_files.push(path.to_path_buf());
+
+    let ssh_dir = path.parent().unwrap_or(Path::new("."));
+
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if let Some(pattern) = trimmed.strip_prefix("Include ") {
+            let pattern = pattern.trim();
+            let full_pattern = if pattern.starts_with('/') {
+                pattern.to_string()
+            } else {
+                ssh_dir.join(pattern).to_string_lossy().to_string()
+            };
+            if let Ok(entries) = glob::glob(&full_pattern) {
+                for entry in entries.flatten() {
+                    if entry.is_file() {
+                        parse_recursive(&entry, hosts, source_files, visited)?;
+                    }
+                }
+            }
+        }
+    }
+
+    let file_hosts = parse_content(&content, path)?;
+    hosts.extend(file_hosts);
+
+    Ok(())
+}
+
 fn parse_annotation(host: &mut SSHHost, raw: &str, file: &Path, line: usize) -> Result<(), SshxError> {
     let content = raw.trim_start_matches("## sshx:").trim();
     let parts: Vec<&str> = content.splitn(2, '=').collect();
@@ -124,6 +186,7 @@ fn parse_option(host: &mut SSHHost, line: &str) {
     match key {
         "HostName" => host.hostname = value.to_string(),
         "Port" => {
+            // Silently ignore invalid port values (SSH-compatible behavior)
             if let Ok(port) = value.parse::<u16>() {
                 host.port = Some(port);
             }
@@ -150,6 +213,8 @@ fn parse_option(host: &mut SSHHost, line: &str) {
 }
 
 fn parse_local_forward(value: &str) -> Option<LocalForward> {
+    // SSH silently ignores malformed LocalForward entries, so we return None
+    // and the caller simply doesn't add anything to local_forwards.
     let parts: Vec<&str> = value.split_whitespace().collect();
     if parts.len() != 2 {
         return None;
@@ -276,5 +341,14 @@ mod tests {
         let prod = &hosts[0];
         assert_eq!(prod.strict_host_checking, Some(StrictHostChecking::No));
         assert_eq!(prod.user_known_hosts_file.as_deref(), Some("/dev/null"));
+    }
+
+    #[test]
+    fn test_parse_with_includes() {
+        let path = fixture("config_with_include");
+        let (hosts, source_files) = parse_with_includes(&path).unwrap();
+        assert!(hosts.len() >= 2);
+        assert!(source_files.len() >= 2);
+        assert!(hosts.iter().any(|h| h.name == "included-host"));
     }
 }
