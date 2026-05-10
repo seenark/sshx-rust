@@ -65,10 +65,84 @@ fn print_host_table(hosts: &[&SSHHost]) {
     }
 }
 
+fn cmd_show(host_alias: Option<&str>, cli: &cli::Cli) -> Result<(), SshxError> {
+    let alias = host_alias.ok_or_else(|| SshxError::HostNotFound {
+        input: "(none)".to_string(),
+    })?;
+    let index = crate::index::ConfigIndex::load(cli.config.as_ref())?;
+    let host = index
+        .resolve_alias(alias)
+        .ok_or_else(|| SshxError::HostNotFound {
+            input: alias.to_string(),
+        })?;
+
+    println!("{}", console::style(format!("Host {}", host.name)).bold());
+    println!("  HostName {}", host.hostname);
+    if let Some(port) = host.port {
+        println!("  Port {port}");
+    }
+    if let Some(ref user) = host.user {
+        println!("  User {user}");
+    }
+    if let Some(ref idf) = host.identity_file {
+        println!("  IdentityFile {}", idf.display());
+    }
+    for lf in &host.local_forwards {
+        println!("  LocalForward {} {}:{}", lf.local_port, lf.remote_host, lf.remote_port);
+    }
+    if let Some(ref shc) = host.strict_host_checking {
+        let val = match shc {
+            crate::model::StrictHostChecking::Yes => "yes",
+            crate::model::StrictHostChecking::No => "no",
+            crate::model::StrictHostChecking::Ask => "ask",
+            crate::model::StrictHostChecking::AcceptNew => "accept-new",
+        };
+        println!("  StrictHostKeyChecking {val}");
+    }
+    if let Some(ref ukhf) = host.user_known_hosts_file {
+        println!("  UserKnownHostsFile {ukhf}");
+    }
+    for (key, value) in &host.extra_options {
+        println!("  {key} {value}");
+    }
+    println!();
+    if let Some(ref group) = host.sshx.group {
+        println!("  {} sshx: group = {group}", console::style("##").dim());
+    }
+    if let Some(ref alias) = host.sshx.alias {
+        println!("  {} sshx: alias = {alias}", console::style("##").dim());
+    }
+    if let Some(ref desc) = host.sshx.description {
+        println!("  {} sshx: description = \"{desc}\"", console::style("##").dim());
+    }
+    if let Some(ref pw) = host.sshx.password {
+        println!("  {} sshx: password = {}", console::style("##").dim(), "*".repeat(pw.len()));
+    }
+    if let Some(ref req) = host.sshx.requires {
+        println!("  {} sshx: requires = {req}", console::style("##").dim());
+    }
+    if host.sshx.background {
+        println!("  {} sshx: background = true", console::style("##").dim());
+    }
+    if let Some(ref ac) = host.sshx.after_connect {
+        println!("  {} sshx: after_connect = \"{ac}\"", console::style("##").dim());
+    }
+
+    println!();
+    println!(
+        "  Source: {}:{}-{}",
+        host.source.file.display(),
+        host.source.line_start,
+        host.source.line_end
+    );
+    Ok(())
+}
+
 pub fn config(action: cli::ConfigAction, cli: &cli::Cli) -> Result<(), SshxError> {
     match action {
         cli::ConfigAction::Validate => cmd_validate(cli),
         cli::ConfigAction::List { group } => cmd_list(cli, group.as_deref()),
+        cli::ConfigAction::Show { host_alias } => cmd_show(Some(&host_alias), cli),
         _ => {
             println!("Command not yet implemented: {:?}", action);
             Ok(())
