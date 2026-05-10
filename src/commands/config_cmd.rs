@@ -1,6 +1,7 @@
 use crate::cli;
 use crate::error::SshxError;
 use crate::model::SSHHost;
+use shell_words::quote;
 
 fn cmd_init() -> Result<(), SshxError> {
     let config_path = crate::config::SshxConfig::config_path();
@@ -172,7 +173,7 @@ fn cmd_edit(host_alias: Option<&str>, cli: &cli::Cli) -> Result<(), SshxError> {
     let file = &host.source.file;
     let line = host.source.line_start;
 
-    let cmd = format!("{editor} +{line} {}", file.display());
+    let cmd = format!("{editor} +{line} {}", quote(&file.display().to_string()));
     if cli.dry_run {
         println!("Would run: {cmd}");
         return Ok(());
@@ -184,7 +185,7 @@ fn cmd_edit(host_alias: Option<&str>, cli: &cli::Cli) -> Result<(), SshxError> {
         .status()
         .map_err(|e| SshxError::ConfigWriteFailed {
             path: file.clone(),
-            reason: e.to_string(),
+            reason: format!("failed to launch editor: {e}"),
         })?;
 
     if !status.success() {
@@ -193,6 +194,59 @@ fn cmd_edit(host_alias: Option<&str>, cli: &cli::Cli) -> Result<(), SshxError> {
             reason: "Editor exited with error".to_string(),
         });
     }
+    Ok(())
+}
+
+fn cmd_remove(host_alias: Option<&str>, cli: &cli::Cli) -> Result<(), SshxError> {
+    let alias = host_alias.ok_or_else(|| SshxError::HostNotFound {
+        input: "(none)".to_string(),
+    })?;
+    let index = crate::index::ConfigIndex::load(cli.config.as_ref())?;
+    let host = index.resolve_alias(alias).ok_or_else(|| SshxError::HostNotFound {
+        input: alias.to_string(),
+    })?;
+
+    let file = &host.source.file;
+    let confirmed = dialoguer::Confirm::new()
+        .with_prompt(format!("Remove host \"{}\"?", host.name))
+        .default(false)
+        .interact()
+        .map_err(|e| SshxError::ConfigWriteFailed {
+            path: file.clone(),
+            reason: e.to_string(),
+        })?;
+
+    if !confirmed {
+        println!("Cancelled");
+        return Ok(());
+    }
+
+    if cli.dry_run {
+        println!("Would remove host \"{}\" from {}", host.name, file.display());
+        return Ok(());
+    }
+
+    let content = std::fs::read_to_string(file).map_err(|e| SshxError::ConfigFileUnreadable {
+        path: file.clone(),
+        reason: e.to_string(),
+    })?;
+
+    let lines: Vec<&str> = content.lines().collect();
+    let mut new_lines = Vec::new();
+    for (i, line) in lines.iter().enumerate() {
+        let line_num = i + 1;
+        if line_num < host.source.line_start || line_num > host.source.line_end {
+            new_lines.push(*line);
+        }
+    }
+
+    let new_content = new_lines.join("\n");
+    std::fs::write(file, new_content).map_err(|e| SshxError::ConfigWriteFailed {
+        path: file.clone(),
+        reason: e.to_string(),
+    })?;
+
+    println!("✓ Removed host \"{}\"", host.name);
     Ok(())
 }
 
@@ -316,9 +370,6 @@ pub fn config(action: cli::ConfigAction, cli: &cli::Cli) -> Result<(), SshxError
         cli::ConfigAction::Init => cmd_init(),
         cli::ConfigAction::Add => cmd_add(cli),
         cli::ConfigAction::Edit { host_alias } => cmd_edit(Some(&host_alias), cli),
-        _ => {
-            println!("Command not yet implemented: {:?}", action);
-            Ok(())
-        }
+        cli::ConfigAction::Remove { host_alias } => cmd_remove(Some(&host_alias), cli),
     }
 }
