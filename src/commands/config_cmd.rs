@@ -159,6 +159,43 @@ fn cmd_show(host_alias: Option<&str>, cli: &cli::Cli) -> Result<(), SshxError> {
     Ok(())
 }
 
+fn cmd_edit(host_alias: Option<&str>, cli: &cli::Cli) -> Result<(), SshxError> {
+    let alias = host_alias.ok_or_else(|| SshxError::HostNotFound {
+        input: "(none)".to_string(),
+    })?;
+    let index = crate::index::ConfigIndex::load(cli.config.as_ref())?;
+    let host = index.resolve_alias(alias).ok_or_else(|| SshxError::HostNotFound {
+        input: alias.to_string(),
+    })?;
+
+    let editor = std::env::var("EDITOR").unwrap_or_else(|_| "vi".to_string());
+    let file = &host.source.file;
+    let line = host.source.line_start;
+
+    let cmd = format!("{editor} +{line} {}", file.display());
+    if cli.dry_run {
+        println!("Would run: {cmd}");
+        return Ok(());
+    }
+
+    let status = std::process::Command::new("sh")
+        .arg("-c")
+        .arg(&cmd)
+        .status()
+        .map_err(|e| SshxError::ConfigWriteFailed {
+            path: file.clone(),
+            reason: e.to_string(),
+        })?;
+
+    if !status.success() {
+        return Err(SshxError::ConfigWriteFailed {
+            path: file.clone(),
+            reason: "Editor exited with error".to_string(),
+        });
+    }
+    Ok(())
+}
+
 fn cmd_add(cli: &cli::Cli) -> Result<(), SshxError> {
     let index = crate::index::ConfigIndex::load(cli.config.as_ref())?;
 
@@ -248,22 +285,22 @@ fn cmd_add(cli: &cli::Cli) -> Result<(), SshxError> {
         return Ok(());
     }
 
-    let default_config = std::path::PathBuf::from(
+    let config_path: std::path::PathBuf = cli.config.as_ref().map(|p| p.clone()).unwrap_or_else(|| {
         dirs::home_dir()
-            .map(|h| h.join(".ssh").join("config").to_string_lossy().to_string())
-            .unwrap_or_else(|| "~/.ssh/config".to_string()),
-    );
-    let config_path: &std::path::Path = cli.config.as_ref().map(|p| p.as_path()).unwrap_or(&default_config);
+            .map(|h| h.join(".ssh").join("config"))
+            .unwrap_or_else(|| std::path::PathBuf::from("~/.ssh/config"))
+    });
 
-    let existing = std::fs::read_to_string(config_path).unwrap_or_default();
+    let existing = std::fs::read_to_string(&config_path)
+        .map_err(|e| SshxError::ConfigWriteFailed { path: config_path.clone(), reason: e.to_string() })?;
     let new_content = if existing.ends_with('\n') || existing.is_empty() {
         format!("{existing}{block}")
     } else {
         format!("{existing}\n{block}")
     };
 
-    std::fs::write(config_path, new_content).map_err(|e| SshxError::ConfigWriteFailed {
-        path: config_path.to_path_buf(),
+    std::fs::write(&config_path, new_content).map_err(|e| SshxError::ConfigWriteFailed {
+        path: config_path.clone(),
         reason: e.to_string(),
     })?;
 
@@ -278,6 +315,7 @@ pub fn config(action: cli::ConfigAction, cli: &cli::Cli) -> Result<(), SshxError
         cli::ConfigAction::Show { host_alias } => cmd_show(Some(&host_alias), cli),
         cli::ConfigAction::Init => cmd_init(),
         cli::ConfigAction::Add => cmd_add(cli),
+        cli::ConfigAction::Edit { host_alias } => cmd_edit(Some(&host_alias), cli),
         _ => {
             println!("Command not yet implemented: {:?}", action);
             Ok(())
