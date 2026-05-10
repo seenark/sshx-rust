@@ -2,6 +2,27 @@ use crate::cli;
 use crate::error::SshxError;
 use crate::model::SSHHost;
 
+fn cmd_init() -> Result<(), SshxError> {
+    let config_path = crate::config::SshxConfig::config_path();
+    if config_path.exists() {
+        println!("Config already exists at {}", config_path.display());
+        return Ok(());
+    }
+    if let Some(parent) = config_path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| SshxError::SshxConfigWriteFailed {
+            path: parent.to_path_buf(),
+            reason: e.to_string(),
+        })?;
+    }
+    let content = crate::config::SshxConfig::generate_default_toml();
+    std::fs::write(&config_path, content).map_err(|e| SshxError::SshxConfigWriteFailed {
+        path: config_path.clone(),
+        reason: e.to_string(),
+    })?;
+    println!("✓ Created default config at {}", config_path.display());
+    Ok(())
+}
+
 fn cmd_validate(cli: &cli::Cli) -> Result<(), SshxError> {
     let ssh_config = cli.config.as_ref();
     let _index = crate::index::ConfigIndex::load(ssh_config)?;
@@ -143,6 +164,7 @@ pub fn config(action: cli::ConfigAction, cli: &cli::Cli) -> Result<(), SshxError
         cli::ConfigAction::Validate => cmd_validate(cli),
         cli::ConfigAction::List { group } => cmd_list(cli, group.as_deref()),
         cli::ConfigAction::Show { host_alias } => cmd_show(Some(&host_alias), cli),
+        cli::ConfigAction::Init => cmd_init(),
         _ => {
             println!("Command not yet implemented: {:?}", action);
             Ok(())
