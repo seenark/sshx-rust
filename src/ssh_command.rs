@@ -1,1 +1,230 @@
-// TODO: implement
+use std::path::PathBuf;
+use crate::model::*;
+
+pub struct SSHCommand {
+    pub host: String,
+    pub port: Option<u16>,
+    pub user: Option<String>,
+    pub identity_file: Option<PathBuf>,
+    pub local_forwards: Vec<LocalForward>,
+    pub background: bool,
+    pub extra_args: Vec<String>,
+    pub password: Option<String>,
+}
+
+impl SSHCommand {
+    pub fn from_host(host: &SSHHost) -> Self {
+        Self {
+            host: host.hostname.clone(),
+            port: host.port,
+            user: host.user.clone(),
+            identity_file: host.identity_file.clone(),
+            local_forwards: host.local_forwards.clone(),
+            background: host.sshx.background,
+            extra_args: Vec::new(),
+            password: host.sshx.password.clone(),
+        }
+    }
+
+    pub fn build_parts(&self) -> Vec<String> {
+        let mut parts = Vec::new();
+
+        if let Some(ref password) = self.password {
+            parts.push("sshpass".to_string());
+            parts.push("-p".to_string());
+            parts.push(password.clone());
+        }
+
+        if let Some(port) = self.port {
+            parts.push("-p".to_string());
+            parts.push(port.to_string());
+        }
+
+        if let Some(ref identity_file) = self.identity_file {
+            parts.push("-i".to_string());
+            parts.push(identity_file.to_string_lossy().to_string());
+        }
+
+        for forward in &self.local_forwards {
+            parts.push("-L".to_string());
+            parts.push(format!("{}:{}:{}", forward.local_port, forward.remote_host, forward.remote_port));
+        }
+
+        if self.background {
+            parts.push("-f".to_string());
+            parts.push("-N".to_string());
+        }
+
+        parts.extend(self.extra_args.clone());
+
+        let user_host = match &self.user {
+            Some(user) => format!("{}@{}", user, self.host),
+            None => self.host.clone(),
+        };
+        parts.push(user_host);
+
+        parts
+    }
+
+    pub fn build(&self) -> String {
+        shell_words::join(&self.build_parts())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    #[test]
+    fn test_basic_ssh_command() {
+        let host = SSHHost {
+            name: "test".to_string(),
+            hostname: "example.com".to_string(),
+            port: Some(22),
+            user: Some("alice".to_string()),
+            identity_file: None,
+            local_forwards: Vec::new(),
+            strict_host_checking: None,
+            user_known_hosts_file: None,
+            extra_options: Vec::new(),
+            sshx: SSHXAnnotations::default(),
+            source: SourceLocation::default(),
+        };
+
+        let cmd = SSHCommand::from_host(&host);
+        assert_eq!(cmd.host, "example.com");
+        assert_eq!(cmd.port, Some(22));
+        assert_eq!(cmd.user, Some("alice".to_string()));
+        assert!(cmd.identity_file.is_none());
+        assert!(cmd.local_forwards.is_empty());
+        assert!(!cmd.background);
+        assert!(cmd.password.is_none());
+    }
+
+    #[test]
+    fn test_command_with_local_forwards() {
+        let host = SSHHost {
+            name: "forwarded".to_string(),
+            hostname: "example.com".to_string(),
+            port: None,
+            user: None,
+            identity_file: None,
+            local_forwards: vec![
+                LocalForward {
+                    local_port: 8080,
+                    remote_host: "localhost".to_string(),
+                    remote_port: 3000,
+                },
+                LocalForward {
+                    local_port: 9090,
+                    remote_host: "remote.db".to_string(),
+                    remote_port: 5432,
+                },
+            ],
+            strict_host_checking: None,
+            user_known_hosts_file: None,
+            extra_options: Vec::new(),
+            sshx: SSHXAnnotations::default(),
+            source: SourceLocation::default(),
+        };
+
+        let cmd = SSHCommand::from_host(&host);
+        let parts = cmd.build_parts();
+
+        assert!(parts.contains(&"-L".to_string()));
+        assert!(parts.contains(&"8080:localhost:3000".to_string()));
+        assert!(parts.contains(&"9090:remote.db:5432".to_string()));
+        assert!(parts.contains(&"example.com".to_string()));
+    }
+
+    #[test]
+    fn test_command_with_password_uses_sshpass() {
+        let host = SSHHost {
+            name: "test".to_string(),
+            hostname: "example.com".to_string(),
+            port: None,
+            user: None,
+            identity_file: None,
+            local_forwards: Vec::new(),
+            strict_host_checking: None,
+            user_known_hosts_file: None,
+            extra_options: Vec::new(),
+            sshx: SSHXAnnotations {
+                password: Some("secret123".to_string()),
+                ..Default::default()
+            },
+            source: SourceLocation::default(),
+        };
+
+        let cmd = SSHCommand::from_host(&host);
+        let parts = cmd.build_parts();
+
+        assert_eq!(parts[0], "sshpass");
+        assert_eq!(parts[1], "-p");
+        assert_eq!(parts[2], "secret123");
+        assert!(parts.contains(&"example.com".to_string()));
+    }
+
+    #[test]
+    fn test_background_mode() {
+        let host = SSHHost {
+            name: "test".to_string(),
+            hostname: "example.com".to_string(),
+            port: None,
+            user: None,
+            identity_file: None,
+            local_forwards: Vec::new(),
+            strict_host_checking: None,
+            user_known_hosts_file: None,
+            extra_options: Vec::new(),
+            sshx: SSHXAnnotations {
+                background: true,
+                ..Default::default()
+            },
+            source: SourceLocation::default(),
+        };
+
+        let cmd = SSHCommand::from_host(&host);
+        let parts = cmd.build_parts();
+
+        assert!(parts.contains(&"-f".to_string()));
+        assert!(parts.contains(&"-N".to_string()));
+        assert!(parts.contains(&"example.com".to_string()));
+    }
+
+    #[test]
+    fn test_build_returns_string() {
+        let host = SSHHost {
+            name: "test".to_string(),
+            hostname: "example.com".to_string(),
+            port: Some(2222),
+            user: Some("bob".to_string()),
+            identity_file: Some(PathBuf::from("/path/to/key")),
+            local_forwards: vec![
+                LocalForward {
+                    local_port: 8080,
+                    remote_host: "localhost".to_string(),
+                    remote_port: 3000,
+                },
+            ],
+            strict_host_checking: None,
+            user_known_hosts_file: None,
+            extra_options: Vec::new(),
+            sshx: SSHXAnnotations::default(),
+            source: SourceLocation::default(),
+        };
+
+        let cmd = SSHCommand::from_host(&host);
+        let built = cmd.build();
+
+        assert!(!built.contains("sshpass")); // No password, so sshpass not included
+        assert!(built.contains("-p"));
+        assert!(built.contains("2222"));
+        assert!(built.contains("-i"));
+        assert!(built.contains("/path/to/key"));
+        assert!(built.contains("-L"));
+        assert!(built.contains("8080:localhost:3000"));
+        assert!(built.contains("bob@example.com"));
+    }
+}
