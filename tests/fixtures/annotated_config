@@ -1,0 +1,21 @@
+Host prod-app
+    HostName 203.0.113.50
+    Port 2222
+    User deploy
+    IdentityFile ~/.ssh/deploy_key
+    LocalForward 8080 localhost:80
+    LocalForward 3306 db.internal:3306
+    StrictHostKeyChecking no
+    UserKnownHostsFile /dev/null
+    ## sshx: group = production
+    ## sshx: alias = prod
+    ## sshx: description = "Main production app server"
+    ## sshx: password = s3cret
+    ## sshx: after_connect = "curl -s http://localhost:8080/health"
+
+Host staging-app
+    HostName 198.51.100.25
+    User deploy
+    ## sshx: group = staging
+    ## sshx: description = "Staging environment"
+    ## sshx: requires = prod-app

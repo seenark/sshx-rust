@@ -1,0 +1,10 @@
+Host web-server
+    HostName 192.168.1.10
+    Port 22
+    User admin
+    IdentityFile ~/.ssh/id_rsa
+
+Host db-server
+    HostName 10.0.0.5
+    Port 5432
+    User postgres

@@ -1,0 +1,23 @@
+Host jump-host
+    HostName 61.47.34.14
+    Port 10522
+    User forward-port
+    ## sshx: group = infra
+    ## sshx: alias = jh
+
+Host prod-app
+    HostName 10.10.10.10
+    User admin
+    ## sshx: group = production
+    ## sshx: requires = jump-host
+
+Host prod-db
+    HostName 10.10.10.20
+    User admin
+    ## sshx: group = production
+    ## sshx: alias = pdb
+
+Host dev-box
+    HostName 192.168.1.100
+    User dev
+    ## sshx: group = development
