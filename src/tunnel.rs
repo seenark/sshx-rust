@@ -4,36 +4,24 @@ use std::time::{Duration, Instant};
 use crate::cli;
 use crate::config::SshxConfig;
 use crate::error::SshxError;
-use crate::index::ConfigIndex;
 use crate::model::SSHHost;
 use crate::ssh_command::SSHCommand;
 
-pub fn ensure_tunnel(
-    jump_host: &SSHHost,
-    index: &ConfigIndex,
-    cli: &cli::Cli,
-) -> Result<(), SshxError> {
-    for port in &jump_host.local_forwards {
-        if TcpStream::connect(format!("127.0.0.1:{}", port.local_port)).is_ok() {
-            if cli.verbose {
-                eprintln!(
-                    "Tunnel port {} already in use — assuming tunnel is active",
-                    port.local_port
-                );
-            }
-            return Ok(());
+pub fn ensure_tunnel(jump_host: &SSHHost, cli: &cli::Cli) -> Result<(), SshxError> {
+    let all_bound = jump_host.local_forwards.iter().all(|lf| {
+        TcpStream::connect(format!("127.0.0.1:{}", lf.local_port)).is_ok()
+    });
+
+    if all_bound {
+        if cli.verbose {
+            eprintln!("All tunnel ports already bound — tunnel active");
         }
+        return Ok(());
     }
 
     let sshx_config = SshxConfig::load().unwrap_or_default();
 
-    for port in &jump_host.local_forwards {
-        if TcpStream::connect(format!("127.0.0.1:{}", port.local_port)).is_ok() {
-            return Err(SshxError::TunnelPortBusy {
-                port: port.local_port,
-            });
-        }
-    }
+    std::thread::sleep(Duration::from_millis(100));
 
     let mut tunnel_cmd = SSHCommand::from_host(jump_host);
     tunnel_cmd.background = true;

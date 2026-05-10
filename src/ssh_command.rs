@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 use crate::model::*;
 
+#[derive(Debug, Clone)]
 pub struct SSHCommand {
     pub host: String,
     pub port: Option<u16>,
@@ -14,6 +15,24 @@ pub struct SSHCommand {
 
 impl SSHCommand {
     pub fn from_host(host: &SSHHost) -> Self {
+        let mut extra_args = Vec::new();
+
+        if let Some(ref shc) = host.strict_host_checking {
+            let val = match shc {
+                StrictHostChecking::Yes => "yes",
+                StrictHostChecking::No => "no",
+                StrictHostChecking::Ask => "ask",
+                StrictHostChecking::AcceptNew => "accept-new",
+            };
+            extra_args.push(format!("-o StrictHostKeyChecking={}", val));
+        }
+        if let Some(ref ukhf) = host.user_known_hosts_file {
+            extra_args.push(format!("-o UserKnownHostsFile={}", ukhf));
+        }
+        for &(ref k, ref v) in &host.extra_options {
+            extra_args.push(format!("-o {}={}", k, v));
+        }
+
         Self {
             host: host.hostname.clone(),
             port: host.port,
@@ -21,7 +40,7 @@ impl SSHCommand {
             identity_file: host.identity_file.clone(),
             local_forwards: host.local_forwards.clone(),
             background: host.sshx.background,
-            extra_args: Vec::new(),
+            extra_args,
             password: host.sshx.password.clone(),
         }
     }

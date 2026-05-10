@@ -13,7 +13,7 @@ struct HostItem {
 }
 
 impl SkimItem for HostItem {
-    fn text(&self) -> Cow<str> {
+    fn text(&self) -> Cow<'_, str> {
         let alias_str = self.alias.as_deref().unwrap_or("");
         Cow::Owned(format!(
             "{} {} {} {} {}",
@@ -83,7 +83,7 @@ pub fn select_host(index: &ConfigIndex, prefilter: Option<&str>) -> Option<Strin
         .bind(vec!["Enter:accept".to_string()])
         .query(prefilter.map(|s| s.to_string()))
         .build()
-        .unwrap();
+        .expect("valid skim options");
 
     let (tx, rx): (SkimItemSender, SkimItemReceiver) = unbounded();
     for item in items {
@@ -106,8 +106,5 @@ pub fn select_host(index: &ConfigIndex, prefilter: Option<&str>) -> Option<Strin
     output
         .selected_items
         .first()
-        .map(|item| {
-            let host_item = item.as_any().downcast_ref::<HostItem>().unwrap();
-            host_item.host.clone()
-        })
+        .and_then(|item| item.as_any().downcast_ref::<HostItem>().map(|h| h.host.clone()))
 }

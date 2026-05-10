@@ -96,10 +96,9 @@ fn parse_recursive(
     visited: &mut std::collections::HashSet<PathBuf>,
 ) -> Result<(), SshxError> {
     let canonical = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
-    if visited.contains(&canonical) {
+    if !visited.insert(canonical.clone()) {
         return Ok(());
     }
-    visited.insert(canonical.clone());
 
     if !path.exists() {
         return Err(SshxError::ConfigFileNotFound {
@@ -132,6 +131,8 @@ fn parse_recursive(
                     }
                 }
             }
+            // Glob pattern syntax errors result in zero entries, which is valid
+            // behavior (e.g., Include *.conf when no .conf files exist).
         }
     }
 
@@ -347,8 +348,29 @@ mod tests {
     fn test_parse_with_includes() {
         let path = fixture("config_with_include");
         let (hosts, source_files) = parse_with_includes(&path).unwrap();
-        assert!(hosts.len() >= 2);
-        assert!(source_files.len() >= 2);
+        assert_eq!(hosts.len(), 2);
+        assert_eq!(source_files.len(), 2);
         assert!(hosts.iter().any(|h| h.name == "included-host"));
+    }
+
+    #[test]
+    fn test_circular_include_prevention() {
+        let temp_dir = std::env::temp_dir();
+        let base = temp_dir.join("sshx_circular_test");
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+
+        let file_a = base.join("a.conf");
+        let file_b = base.join("b.conf");
+
+        std::fs::write(&file_a, "Include b.conf\nHost host-a\n    HostName 1.1.1.1").unwrap();
+        std::fs::write(&file_b, "Include a.conf\nHost host-b\n    HostName 2.2.2.2").unwrap();
+
+        let (hosts, source_files) = parse_with_includes(&file_a).unwrap();
+
+        assert_eq!(hosts.len(), 2);
+        assert!(source_files.len() <= 2);
+
+        let _ = std::fs::remove_dir_all(&base);
     }
 }

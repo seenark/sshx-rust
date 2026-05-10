@@ -240,7 +240,11 @@ fn cmd_remove(host_alias: Option<&str>, cli: &cli::Cli) -> Result<(), SshxError>
         }
     }
 
-    let new_content = new_lines.join("\n");
+    let new_content = if new_lines.is_empty() {
+        String::new()
+    } else {
+        new_lines.join("\n")
+    };
     std::fs::write(file, new_content).map_err(|e| SshxError::ConfigWriteFailed {
         path: file.clone(),
         reason: e.to_string(),

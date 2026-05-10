@@ -281,8 +281,8 @@ mod tests {
             .join("tests")
             .join("fixtures")
             .join("multi_group_config");
-        let (hosts, _) = crate::parser::parse_with_includes(&path).unwrap();
-        let index = ConfigIndex::build(hosts).unwrap();
+        let config_path = Some(&path);
+        let index = ConfigIndex::load(config_path).unwrap();
         assert_eq!(index.hosts.len(), 4);
         assert_eq!(index.groups.len(), 3);
         assert_eq!(index.aliases.len(), 2);

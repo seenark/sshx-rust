@@ -25,7 +25,9 @@ pub fn connect(host_alias: Option<&str>, cli: &cli::Cli) -> Result<(), SshxError
         input: host_alias.unwrap_or("(selector cancelled)").to_string(),
     })?;
 
-    let host = index.find_host(&host_name).unwrap();
+    let host = index.find_host(&host_name).ok_or_else(|| SshxError::HostNotFound {
+        input: host_name.clone(),
+    })?;
 
     if let Some(ref requires) = host.sshx.requires {
         let jump_host = index.jump_host_for(host).ok_or_else(|| {
@@ -34,7 +36,7 @@ pub fn connect(host_alias: Option<&str>, cli: &cli::Cli) -> Result<(), SshxError
                 requires: requires.clone(),
             }
         })?;
-        crate::tunnel::ensure_tunnel(jump_host, &index, cli)?;
+        crate::tunnel::ensure_tunnel(jump_host, cli)?;
     }
 
     let ssh_cmd = SSHCommand::from_host(host);
@@ -55,7 +57,7 @@ pub fn connect(host_alias: Option<&str>, cli: &cli::Cli) -> Result<(), SshxError
     let status = std::process::Command::new(&parts[0])
         .args(&parts[1..])
         .status()
-        .map_err(|e| SshxError::SshCommandFailed {
+        .map_err(|_| SshxError::SshCommandFailed {
             exit_code: None,
         })?;
 
