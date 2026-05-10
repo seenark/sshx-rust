@@ -159,12 +159,125 @@ fn cmd_show(host_alias: Option<&str>, cli: &cli::Cli) -> Result<(), SshxError> {
     Ok(())
 }
 
+fn cmd_add(cli: &cli::Cli) -> Result<(), SshxError> {
+    let index = crate::index::ConfigIndex::load(cli.config.as_ref())?;
+
+    let name: String = dialoguer::Input::new()
+        .with_prompt("Host name")
+        .interact_text()
+        .map_err(|e| SshxError::ConfigWriteFailed {
+            path: "stdin".into(),
+            reason: e.to_string(),
+        })?;
+
+    if name.contains(' ') || name.contains('\t') {
+        return Err(SshxError::InvalidHostName { name });
+    }
+    if index.find_host(&name).is_some() {
+        return Err(SshxError::HostAlreadyExists { name });
+    }
+
+    let hostname: String = dialoguer::Input::new()
+        .with_prompt("HostName (IP or domain)")
+        .interact_text()
+        .map_err(|e| SshxError::ConfigWriteFailed {
+            path: "stdin".into(),
+            reason: e.to_string(),
+        })?;
+
+    let port: String = dialoguer::Input::new()
+        .with_prompt("Port")
+        .default("22".to_string())
+        .interact_text()
+        .map_err(|e| SshxError::ConfigWriteFailed {
+            path: "stdin".into(),
+            reason: e.to_string(),
+        })?;
+    let port: u16 = port.parse().map_err(|_| SshxError::InvalidPort { input: port })?;
+
+    let user: String = dialoguer::Input::new()
+        .with_prompt("User")
+        .interact_text()
+        .map_err(|e| SshxError::ConfigWriteFailed {
+            path: "stdin".into(),
+            reason: e.to_string(),
+        })?;
+
+    let group: String = dialoguer::Input::new()
+        .with_prompt("Group (optional)")
+        .allow_empty(true)
+        .interact_text()
+        .unwrap_or_default();
+
+    let description: String = dialoguer::Input::new()
+        .with_prompt("Description (optional)")
+        .allow_empty(true)
+        .interact_text()
+        .unwrap_or_default();
+
+    let alias: String = dialoguer::Input::new()
+        .with_prompt("Alias (optional)")
+        .allow_empty(true)
+        .interact_text()
+        .unwrap_or_default();
+
+    let mut lines = vec![format!("Host {name}")];
+    lines.push(format!("    HostName {hostname}"));
+    if port != 22 {
+        lines.push(format!("    Port {port}"));
+    }
+    if !user.is_empty() {
+        lines.push(format!("    User {user}"));
+    }
+    if !group.is_empty() {
+        lines.push(format!("    ## sshx: group = {group}"));
+    }
+    if !description.is_empty() {
+        lines.push(format!("    ## sshx: description = \"{description}\""));
+    }
+    if !alias.is_empty() {
+        lines.push(format!("    ## sshx: alias = {alias}"));
+    }
+    lines.push(String::new());
+
+    let block = lines.join("\n");
+
+    if cli.dry_run {
+        println!("Would append to config:");
+        println!("{block}");
+        return Ok(());
+    }
+
+    let default_config = std::path::PathBuf::from(
+        dirs::home_dir()
+            .map(|h| h.join(".ssh").join("config").to_string_lossy().to_string())
+            .unwrap_or_else(|| "~/.ssh/config".to_string()),
+    );
+    let config_path: &std::path::Path = cli.config.as_ref().map(|p| p.as_path()).unwrap_or(&default_config);
+
+    let existing = std::fs::read_to_string(config_path).unwrap_or_default();
+    let new_content = if existing.ends_with('\n') || existing.is_empty() {
+        format!("{existing}{block}")
+    } else {
+        format!("{existing}\n{block}")
+    };
+
+    std::fs::write(config_path, new_content).map_err(|e| SshxError::ConfigWriteFailed {
+        path: config_path.to_path_buf(),
+        reason: e.to_string(),
+    })?;
+
+    println!("✓ Added host \"{name}\" to {}", config_path.display());
+    Ok(())
+}
+
 pub fn config(action: cli::ConfigAction, cli: &cli::Cli) -> Result<(), SshxError> {
     match action {
         cli::ConfigAction::Validate => cmd_validate(cli),
         cli::ConfigAction::List { group } => cmd_list(cli, group.as_deref()),
         cli::ConfigAction::Show { host_alias } => cmd_show(Some(&host_alias), cli),
         cli::ConfigAction::Init => cmd_init(),
+        cli::ConfigAction::Add => cmd_add(cli),
         _ => {
             println!("Command not yet implemented: {:?}", action);
             Ok(())
