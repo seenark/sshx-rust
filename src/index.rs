@@ -105,6 +105,19 @@ impl ConfigIndex {
     pub fn jump_host_for(&self, host: &SSHHost) -> Option<&SSHHost> {
         host.sshx.requires.as_ref().and_then(|req| self.find_host(req))
     }
+
+    pub fn load(ssh_config_path: Option<&PathBuf>) -> Result<Self, SshxError> {
+        let sshx_config = crate::config::SshxConfig::load().unwrap_or_default();
+        let config_path = ssh_config_path
+            .cloned()
+            .unwrap_or_else(|| sshx_config.ssh_config_path());
+
+        let (hosts, source_files) = crate::parser::parse_with_includes(&config_path)?;
+
+        let mut index = Self::build(hosts)?;
+        index.source_files = source_files;
+        Ok(index)
+    }
 }
 
 #[cfg(test)]
@@ -260,5 +273,18 @@ mod tests {
             }
             _ => panic!("Expected CircularRequires error"),
         }
+    }
+
+    #[test]
+    fn test_full_load_pipeline() {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests")
+            .join("fixtures")
+            .join("multi_group_config");
+        let (hosts, _) = crate::parser::parse_with_includes(&path).unwrap();
+        let index = ConfigIndex::build(hosts).unwrap();
+        assert_eq!(index.hosts.len(), 4);
+        assert_eq!(index.groups.len(), 3);
+        assert_eq!(index.aliases.len(), 2);
     }
 }
