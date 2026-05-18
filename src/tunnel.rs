@@ -8,9 +8,10 @@ use crate::model::SSHHost;
 use crate::ssh_command::SSHCommand;
 
 pub fn ensure_tunnel(jump_host: &SSHHost, cli: &cli::Cli) -> Result<(), SshxError> {
-    let all_bound = jump_host.local_forwards.iter().all(|lf| {
-        TcpStream::connect(format!("127.0.0.1:{}", lf.local_port)).is_ok()
-    });
+    let all_bound = jump_host
+        .local_forwards
+        .iter()
+        .all(|lf| TcpStream::connect(format!("127.0.0.1:{}", lf.local_port)).is_ok());
 
     if all_bound {
         if cli.verbose {

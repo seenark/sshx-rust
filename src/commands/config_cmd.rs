@@ -44,7 +44,10 @@ fn cmd_list(cli: &cli::Cli, group_filter: Option<&str>) -> Result<(), SshxError>
     } else if !index.groups.is_empty() {
         for (group_name, _) in &index.groups {
             let hosts = index.hosts_in_group(group_name);
-            println!("\n{}", console::style(format!("[{group_name}]")).bold().cyan());
+            println!(
+                "\n{}",
+                console::style(format!("[{group_name}]")).bold().cyan()
+            );
             print_host_table(&hosts);
         }
         let ungrouped: Vec<&SSHHost> = index
@@ -110,7 +113,10 @@ fn cmd_show(host_alias: Option<&str>, cli: &cli::Cli) -> Result<(), SshxError> {
         println!("  IdentityFile {}", idf.display());
     }
     for lf in &host.local_forwards {
-        println!("  LocalForward {} {}:{}", lf.local_port, lf.remote_host, lf.remote_port);
+        println!(
+            "  LocalForward {} {}:{}",
+            lf.local_port, lf.remote_host, lf.remote_port
+        );
     }
     if let Some(ref shc) = host.strict_host_checking {
         let val = match shc {
@@ -135,10 +141,17 @@ fn cmd_show(host_alias: Option<&str>, cli: &cli::Cli) -> Result<(), SshxError> {
         println!("  {} sshx: alias = {alias}", console::style("##").dim());
     }
     if let Some(ref desc) = host.sshx.description {
-        println!("  {} sshx: description = \"{desc}\"", console::style("##").dim());
+        println!(
+            "  {} sshx: description = \"{desc}\"",
+            console::style("##").dim()
+        );
     }
     if let Some(ref pw) = host.sshx.password {
-        println!("  {} sshx: password = {}", console::style("##").dim(), "*".repeat(pw.len()));
+        println!(
+            "  {} sshx: password = {}",
+            console::style("##").dim(),
+            "*".repeat(pw.len())
+        );
     }
     if let Some(ref req) = host.sshx.requires {
         println!("  {} sshx: requires = {req}", console::style("##").dim());
@@ -147,7 +160,10 @@ fn cmd_show(host_alias: Option<&str>, cli: &cli::Cli) -> Result<(), SshxError> {
         println!("  {} sshx: background = true", console::style("##").dim());
     }
     if let Some(ref ac) = host.sshx.after_connect {
-        println!("  {} sshx: after_connect = \"{ac}\"", console::style("##").dim());
+        println!(
+            "  {} sshx: after_connect = \"{ac}\"",
+            console::style("##").dim()
+        );
     }
 
     println!();
@@ -165,9 +181,11 @@ fn cmd_edit(host_alias: Option<&str>, cli: &cli::Cli) -> Result<(), SshxError> {
         input: "(none)".to_string(),
     })?;
     let index = crate::index::ConfigIndex::load(cli.config.as_ref())?;
-    let host = index.resolve_alias(alias).ok_or_else(|| SshxError::HostNotFound {
-        input: alias.to_string(),
-    })?;
+    let host = index
+        .resolve_alias(alias)
+        .ok_or_else(|| SshxError::HostNotFound {
+            input: alias.to_string(),
+        })?;
 
     let editor = std::env::var("EDITOR").unwrap_or_else(|_| "vi".to_string());
     let file = &host.source.file;
@@ -202,9 +220,11 @@ fn cmd_remove(host_alias: Option<&str>, cli: &cli::Cli) -> Result<(), SshxError>
         input: "(none)".to_string(),
     })?;
     let index = crate::index::ConfigIndex::load(cli.config.as_ref())?;
-    let host = index.resolve_alias(alias).ok_or_else(|| SshxError::HostNotFound {
-        input: alias.to_string(),
-    })?;
+    let host = index
+        .resolve_alias(alias)
+        .ok_or_else(|| SshxError::HostNotFound {
+            input: alias.to_string(),
+        })?;
 
     let file = &host.source.file;
     let confirmed = dialoguer::Confirm::new()
@@ -222,7 +242,11 @@ fn cmd_remove(host_alias: Option<&str>, cli: &cli::Cli) -> Result<(), SshxError>
     }
 
     if cli.dry_run {
-        println!("Would remove host \"{}\" from {}", host.name, file.display());
+        println!(
+            "Would remove host \"{}\" from {}",
+            host.name,
+            file.display()
+        );
         return Ok(());
     }
 
@@ -288,7 +312,9 @@ fn cmd_add(cli: &cli::Cli) -> Result<(), SshxError> {
             path: "stdin".into(),
             reason: e.to_string(),
         })?;
-    let port: u16 = port.parse().map_err(|_| SshxError::InvalidPort { input: port })?;
+    let port: u16 = port
+        .parse()
+        .map_err(|_| SshxError::InvalidPort { input: port })?;
 
     let user: String = dialoguer::Input::new()
         .with_prompt("User")
@@ -343,14 +369,18 @@ fn cmd_add(cli: &cli::Cli) -> Result<(), SshxError> {
         return Ok(());
     }
 
-    let config_path: std::path::PathBuf = cli.config.as_ref().map(|p| p.clone()).unwrap_or_else(|| {
-        dirs::home_dir()
-            .map(|h| h.join(".ssh").join("config"))
-            .unwrap_or_else(|| std::path::PathBuf::from("~/.ssh/config"))
-    });
+    let config_path: std::path::PathBuf =
+        cli.config.clone().unwrap_or_else(|| {
+            dirs::home_dir()
+                .map(|h| h.join(".ssh").join("config"))
+                .unwrap_or_else(|| std::path::PathBuf::from("~/.ssh/config"))
+        });
 
-    let existing = std::fs::read_to_string(&config_path)
-        .map_err(|e| SshxError::ConfigWriteFailed { path: config_path.clone(), reason: e.to_string() })?;
+    let existing =
+        std::fs::read_to_string(&config_path).map_err(|e| SshxError::ConfigWriteFailed {
+            path: config_path.clone(),
+            reason: e.to_string(),
+        })?;
     let new_content = if existing.ends_with('\n') || existing.is_empty() {
         format!("{existing}{block}")
     } else {

@@ -1,7 +1,7 @@
+use crate::index::ConfigIndex;
+use skim::prelude::*;
 use std::borrow::Cow;
 use std::sync::Arc;
-use skim::prelude::*;
-use crate::index::ConfigIndex;
 
 struct HostItem {
     host: String,
@@ -37,7 +37,11 @@ impl SkimItem for HostItem {
             .map(|d| format!(" — {d}"))
             .unwrap_or_default();
         let port_str = self.port.map(|p| format!(":{p}")).unwrap_or_default();
-        let group_str = self.group.as_deref().map(|g| format!("[{g}] ")).unwrap_or_default();
+        let group_str = self
+            .group
+            .as_deref()
+            .map(|g| format!("[{g}] "))
+            .unwrap_or_default();
         AnsiString::from(format!(
             "{}{}  {}{}{}{}",
             group_str, self.host, alias_str, self.hostname, port_str, desc_str
@@ -93,18 +97,15 @@ pub fn select_host(index: &ConfigIndex, prefilter: Option<&str>) -> Option<Strin
 
     let selected = Skim::run_with(&options, Some(rx));
 
-    if selected.is_none() {
-        return None;
-    }
-
-    let output = selected.unwrap();
+    let output = selected.as_ref()?;
 
     if output.is_abort {
         return None;
     }
 
-    output
-        .selected_items
-        .first()
-        .and_then(|item| item.as_any().downcast_ref::<HostItem>().map(|h| h.host.clone()))
+    output.selected_items.first().and_then(|item| {
+        item.as_any()
+            .downcast_ref::<HostItem>()
+            .map(|h| h.host.clone())
+    })
 }

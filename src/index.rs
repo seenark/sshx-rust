@@ -1,8 +1,8 @@
-use std::collections::HashMap;
-use std::path::PathBuf;
-use indexmap::IndexMap;
 use crate::error::SshxError;
 use crate::model::*;
+use indexmap::IndexMap;
+use std::collections::HashMap;
+use std::path::PathBuf;
 
 #[derive(Debug)]
 pub struct ConfigIndex {
@@ -47,7 +47,11 @@ impl ConfigIndex {
             }
         }
 
-        let name_to_idx: HashMap<&str, usize> = hosts.iter().enumerate().map(|(i, h)| (h.name.as_str(), i)).collect();
+        let name_to_idx: HashMap<&str, usize> = hosts
+            .iter()
+            .enumerate()
+            .map(|(i, h)| (h.name.as_str(), i))
+            .collect();
 
         for (idx, host) in hosts.iter().enumerate() {
             if let Some(ref requires) = host.sshx.requires {
@@ -58,7 +62,9 @@ impl ConfigIndex {
                     if let Some(&req_idx) = name_to_idx.get(req) {
                         let req_host = &hosts[req_idx];
                         if let Some(ref req_requires) = req_host.sshx.requires {
-                            let req_requires_idx = *name_to_idx.get(req_requires.as_str()).expect("requires target must exist");
+                            let req_requires_idx = *name_to_idx
+                                .get(req_requires.as_str())
+                                .expect("requires target must exist");
                             if visited.contains(&req_requires_idx) {
                                 return Err(SshxError::CircularRequires {
                                     host: host.name.clone(),
@@ -103,7 +109,10 @@ impl ConfigIndex {
     }
 
     pub fn jump_host_for(&self, host: &SSHHost) -> Option<&SSHHost> {
-        host.sshx.requires.as_ref().and_then(|req| self.find_host(req))
+        host.sshx
+            .requires
+            .as_ref()
+            .and_then(|req| self.find_host(req))
     }
 
     pub fn load(ssh_config_path: Option<&PathBuf>) -> Result<Self, SshxError> {
@@ -208,7 +217,11 @@ mod tests {
         assert!(result.is_err());
         let err = result.unwrap_err();
         match err {
-            SshxError::DuplicateAlias { alias, host1, host2 } => {
+            SshxError::DuplicateAlias {
+                alias,
+                host1,
+                host2,
+            } => {
                 assert_eq!(alias, "same");
                 assert_eq!(host1, "host1");
                 assert_eq!(host2, "host2");
@@ -219,17 +232,15 @@ mod tests {
 
     #[test]
     fn test_requires_not_found_error() {
-        let hosts = vec![
-            SSHHost {
-                name: "myhost".to_string(),
-                hostname: "192.168.1.1".to_string(),
-                sshx: SSHXAnnotations {
-                    requires: Some("nonexistent".to_string()),
-                    ..Default::default()
-                },
+        let hosts = vec![SSHHost {
+            name: "myhost".to_string(),
+            hostname: "192.168.1.1".to_string(),
+            sshx: SSHXAnnotations {
+                requires: Some("nonexistent".to_string()),
                 ..Default::default()
             },
-        ];
+            ..Default::default()
+        }];
         let result = ConfigIndex::build(hosts);
         assert!(result.is_err());
         let err = result.unwrap_err();

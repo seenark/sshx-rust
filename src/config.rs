@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use crate::error::SshxError;
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Default, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SshxConfig {
     #[serde(default)]
     pub general: GeneralConfig,
@@ -12,7 +12,7 @@ pub struct SshxConfig {
     pub tunnel: TunnelConfig,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Default, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct GeneralConfig {
     #[serde(default)]
     pub ssh_config_path: Option<PathBuf>,
@@ -52,30 +52,23 @@ pub struct TunnelConfig {
     pub connect_timeout_s: u64,
 }
 
-fn default_fuzzy_threshold() -> f32 { 0.4 }
-fn default_host_weight() -> f32 { 0.7 }
-fn default_hostname_weight() -> f32 { 0.3 }
-fn default_true() -> bool { true }
-fn default_check_interval() -> u64 { 500 }
-fn default_connect_timeout() -> u64 { 10 }
-
-impl Default for SshxConfig {
-    fn default() -> Self {
-        Self {
-            general: GeneralConfig::default(),
-            ui: UIConfig::default(),
-            tunnel: TunnelConfig::default(),
-        }
-    }
+fn default_fuzzy_threshold() -> f32 {
+    0.4
 }
-
-impl Default for GeneralConfig {
-    fn default() -> Self {
-        Self {
-            ssh_config_path: None,
-            default_user: None,
-        }
-    }
+fn default_host_weight() -> f32 {
+    0.7
+}
+fn default_hostname_weight() -> f32 {
+    0.3
+}
+fn default_true() -> bool {
+    true
+}
+fn default_check_interval() -> u64 {
+    500
+}
+fn default_connect_timeout() -> u64 {
+    10
 }
 
 impl Default for UIConfig {
@@ -213,7 +206,10 @@ show_descriptions = false
         let path = dir.path().join("bad.toml");
         std::fs::write(&path, "invalid = toml [[[").unwrap();
         let result = SshxConfig::load_from(&path);
-        assert!(matches!(result, Err(SshxError::SshxConfigParseFailed { .. })));
+        assert!(matches!(
+            result,
+            Err(SshxError::SshxConfigParseFailed { .. })
+        ));
     }
 
     #[test]

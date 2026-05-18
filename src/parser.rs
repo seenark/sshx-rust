@@ -1,24 +1,22 @@
-use std::path::{Path, PathBuf};
 use std::fs;
+use std::path::{Path, PathBuf};
 
-use glob;
 
 use crate::error::SshxError;
 use crate::model::*;
 
+#[allow(dead_code)]
 pub fn parse_file(path: &Path) -> Result<Vec<SSHHost>, SshxError> {
-    let content = fs::read_to_string(path)
-        .map_err(|e| SshxError::ConfigFileUnreadable {
-            path: path.to_path_buf(),
-            reason: e.to_string(),
-        })?;
+    let content = fs::read_to_string(path).map_err(|e| SshxError::ConfigFileUnreadable {
+        path: path.to_path_buf(),
+        reason: e.to_string(),
+    })?;
     parse_content(&content, path)
 }
 
 pub fn parse_content(content: &str, file_path: &Path) -> Result<Vec<SSHHost>, SshxError> {
     let mut hosts = Vec::new();
     let mut current_host: Option<SSHHost> = None;
-    let mut line_start = 0;
 
     for (line_idx, line) in content.lines().enumerate() {
         let trimmed = line.trim();
@@ -44,25 +42,27 @@ pub fn parse_content(content: &str, file_path: &Path) -> Result<Vec<SSHHost>, Ss
                 hosts.push(host);
             }
 
-            let name = trimmed[5..].trim().to_string();
-            line_start = line_idx + 1;
-            current_host = Some(SSHHost {
-                name: name.clone(),
-                hostname: String::new(),
-                port: None,
-                user: None,
-                identity_file: None,
-                local_forwards: Vec::new(),
-                strict_host_checking: None,
-                user_known_hosts_file: None,
-                extra_options: Vec::new(),
-                sshx: SSHXAnnotations::default(),
-                source: SourceLocation {
-                    file: file_path.to_path_buf(),
-                    line_start,
-                    line_end: 0,
-                },
-            });
+            if let Some(stripped) = trimmed.strip_prefix("Host ") {
+                let name = stripped.trim().to_string();
+                let line_start = line_idx + 1;
+                current_host = Some(SSHHost {
+                    name: name.clone(),
+                    hostname: String::new(),
+                    port: None,
+                    user: None,
+                    identity_file: None,
+                    local_forwards: Vec::new(),
+                    strict_host_checking: None,
+                    user_known_hosts_file: None,
+                    extra_options: Vec::new(),
+                    sshx: SSHXAnnotations::default(),
+                    source: SourceLocation {
+                        file: file_path.to_path_buf(),
+                        line_start,
+                        line_end: 0,
+                    },
+                });
+            }
             continue;
         }
 
@@ -72,7 +72,8 @@ pub fn parse_content(content: &str, file_path: &Path) -> Result<Vec<SSHHost>, Ss
     }
 
     if let Some(mut host) = current_host {
-        host.source.line_end = hosts.last()
+        host.source.line_end = hosts
+            .last()
             .map(|h| h.source.line_end)
             .unwrap_or(content.lines().count());
         hosts.push(host);
@@ -142,7 +143,12 @@ fn parse_recursive(
     Ok(())
 }
 
-fn parse_annotation(host: &mut SSHHost, raw: &str, file: &Path, line: usize) -> Result<(), SshxError> {
+fn parse_annotation(
+    host: &mut SSHHost,
+    raw: &str,
+    file: &Path,
+    line: usize,
+) -> Result<(), SshxError> {
     let content = raw.trim_start_matches("## sshx:").trim();
     let parts: Vec<&str> = content.splitn(2, '=').collect();
     if parts.len() != 2 {
@@ -193,7 +199,11 @@ fn parse_option(host: &mut SSHHost, line: &str) {
             }
         }
         "User" => host.user = Some(value.to_string()),
-        "IdentityFile" => host.identity_file = Some(PathBuf::from(value.replace("~", std::env::var("HOME").unwrap_or_default().as_str()))),
+        "IdentityFile" => {
+            host.identity_file = Some(PathBuf::from(
+                value.replace("~", std::env::var("HOME").unwrap_or_default().as_str()),
+            ))
+        }
         "LocalForward" => {
             if let Some(forward) = parse_local_forward(value) {
                 host.local_forwards.push(forward);
@@ -209,7 +219,9 @@ fn parse_option(host: &mut SSHHost, line: &str) {
             };
         }
         "UserKnownHostsFile" => host.user_known_hosts_file = Some(value.to_string()),
-        _ => host.extra_options.push((key.to_string(), value.to_string())),
+        _ => host
+            .extra_options
+            .push((key.to_string(), value.to_string())),
     }
 }
 
@@ -286,8 +298,14 @@ mod tests {
         assert_eq!(prod.sshx.group.as_deref(), Some("production"));
         assert_eq!(prod.sshx.alias.as_deref(), Some("prod"));
         assert_eq!(prod.sshx.password.as_deref(), Some("s3cret"));
-        assert_eq!(prod.sshx.description.as_deref(), Some("Main production app server"));
-        assert_eq!(prod.sshx.after_connect.as_deref(), Some("curl -s http://localhost:8080/health"));
+        assert_eq!(
+            prod.sshx.description.as_deref(),
+            Some("Main production app server")
+        );
+        assert_eq!(
+            prod.sshx.after_connect.as_deref(),
+            Some("curl -s http://localhost:8080/health")
+        );
         assert_eq!(prod.local_forwards.len(), 2);
         assert_eq!(prod.strict_host_checking, Some(StrictHostChecking::No));
 

@@ -7,17 +7,15 @@ pub fn connect(host_alias: Option<&str>, cli: &cli::Cli) -> Result<(), SshxError
     let index = ConfigIndex::load(cli.config.as_ref())?;
 
     let host_name = match host_alias {
-        Some(input) => {
-            match index.resolve_alias(input) {
-                Some(host) => Some(host.name.clone()),
-                None => {
-                    if cli.verbose {
-                        eprintln!("No exact match for \"{input}\", opening selector...");
-                    }
-                    crate::selector::select_host(&index, Some(input))
+        Some(input) => match index.resolve_alias(input) {
+            Some(host) => Some(host.name.clone()),
+            None => {
+                if cli.verbose {
+                    eprintln!("No exact match for \"{input}\", opening selector...");
                 }
+                crate::selector::select_host(&index, Some(input))
             }
-        }
+        },
         None => crate::selector::select_host(&index, None),
     };
 
@@ -25,17 +23,20 @@ pub fn connect(host_alias: Option<&str>, cli: &cli::Cli) -> Result<(), SshxError
         input: host_alias.unwrap_or("(selector cancelled)").to_string(),
     })?;
 
-    let host = index.find_host(&host_name).ok_or_else(|| SshxError::HostNotFound {
-        input: host_name.clone(),
-    })?;
+    let host = index
+        .find_host(&host_name)
+        .ok_or_else(|| SshxError::HostNotFound {
+            input: host_name.clone(),
+        })?;
 
     if let Some(ref requires) = host.sshx.requires {
-        let jump_host = index.jump_host_for(host).ok_or_else(|| {
-            SshxError::RequiresHostNotFound {
-                host: host.name.clone(),
-                requires: requires.clone(),
-            }
-        })?;
+        let jump_host =
+            index
+                .jump_host_for(host)
+                .ok_or_else(|| SshxError::RequiresHostNotFound {
+                    host: host.name.clone(),
+                    requires: requires.clone(),
+                })?;
         crate::tunnel::ensure_tunnel(jump_host, cli)?;
     }
 
@@ -57,9 +58,7 @@ pub fn connect(host_alias: Option<&str>, cli: &cli::Cli) -> Result<(), SshxError
     let status = std::process::Command::new(&parts[0])
         .args(&parts[1..])
         .status()
-        .map_err(|_| SshxError::SshCommandFailed {
-            exit_code: None,
-        })?;
+        .map_err(|_| SshxError::SshCommandFailed { exit_code: None })?;
 
     if !status.success() {
         return Err(SshxError::SshCommandFailed {

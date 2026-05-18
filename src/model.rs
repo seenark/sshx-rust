@@ -72,6 +72,7 @@ pub struct SourceLocation {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[allow(dead_code)]
 pub struct TunnelProcess {
     pub jump_host: String,
     pub pid: u32,
@@ -80,6 +81,7 @@ pub struct TunnelProcess {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[allow(dead_code)]
 pub enum TunnelStatus {
     NotRunning,
     Running(TunnelProcess),

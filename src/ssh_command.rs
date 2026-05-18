@@ -1,5 +1,5 @@
-use std::path::PathBuf;
 use crate::model::*;
+use std::path::PathBuf;
 
 #[derive(Debug, Clone)]
 pub struct SSHCommand {
@@ -29,7 +29,7 @@ impl SSHCommand {
         if let Some(ref ukhf) = host.user_known_hosts_file {
             extra_args.push(format!("-o UserKnownHostsFile={}", ukhf));
         }
-        for &(ref k, ref v) in &host.extra_options {
+        for (k, v) in &host.extra_options {
             extra_args.push(format!("-o {}={}", k, v));
         }
 
@@ -66,7 +66,10 @@ impl SSHCommand {
 
         for forward in &self.local_forwards {
             parts.push("-L".to_string());
-            parts.push(format!("{}:{}:{}", forward.local_port, forward.remote_host, forward.remote_port));
+            parts.push(format!(
+                "{}:{}:{}",
+                forward.local_port, forward.remote_host, forward.remote_port
+            ));
         }
 
         if self.background {
@@ -86,7 +89,7 @@ impl SSHCommand {
     }
 
     pub fn build(&self) -> String {
-        shell_words::join(&self.build_parts())
+        shell_words::join(self.build_parts())
     }
 }
 
@@ -220,13 +223,11 @@ mod tests {
             port: Some(2222),
             user: Some("bob".to_string()),
             identity_file: Some(PathBuf::from("/path/to/key")),
-            local_forwards: vec![
-                LocalForward {
-                    local_port: 8080,
-                    remote_host: "localhost".to_string(),
-                    remote_port: 3000,
-                },
-            ],
+            local_forwards: vec![LocalForward {
+                local_port: 8080,
+                remote_host: "localhost".to_string(),
+                remote_port: 3000,
+            }],
             strict_host_checking: None,
             user_known_hosts_file: None,
             extra_options: Vec::new(),

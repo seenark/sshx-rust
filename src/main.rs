@@ -1,4 +1,5 @@
 mod cli;
+mod clipboard;
 mod commands;
 mod config;
 mod error;
@@ -8,7 +9,6 @@ mod parser;
 mod selector;
 mod ssh_command;
 mod tunnel;
-mod clipboard;
 
 use clap::Parser;
 
