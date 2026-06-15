@@ -46,13 +46,15 @@ impl SSHCommand {
     }
 
     pub fn build_parts(&self) -> Vec<String> {
-        let mut parts = Vec::new();
-
-        if let Some(ref password) = self.password {
-            parts.push("sshpass".to_string());
-            parts.push("-p".to_string());
-            parts.push(password.clone());
-        }
+        let mut parts = match &self.password {
+            Some(password) => vec![
+                "sshpass".to_string(),
+                "-p".to_string(),
+                password.clone(),
+                "ssh".to_string(),
+            ],
+            None => vec!["ssh".to_string()],
+        };
 
         if let Some(port) = self.port {
             parts.push("-p".to_string());
@@ -154,6 +156,7 @@ mod tests {
         let cmd = SSHCommand::from_host(&host);
         let parts = cmd.build_parts();
 
+        assert_eq!(parts[0], "ssh");
         assert!(parts.contains(&"-L".to_string()));
         assert!(parts.contains(&"8080:localhost:3000".to_string()));
         assert!(parts.contains(&"9090:remote.db:5432".to_string()));
@@ -182,9 +185,7 @@ mod tests {
         let cmd = SSHCommand::from_host(&host);
         let parts = cmd.build_parts();
 
-        assert_eq!(parts[0], "sshpass");
-        assert_eq!(parts[1], "-p");
-        assert_eq!(parts[2], "secret123");
+        assert_eq!(parts[0..4], ["sshpass", "-p", "secret123", "ssh"]);
         assert!(parts.contains(&"example.com".to_string()));
     }
 
@@ -216,6 +217,30 @@ mod tests {
     }
 
     #[test]
+    fn test_command_orders_ssh_port_and_user() {
+        let host = SSHHost {
+            name: "test".to_string(),
+            hostname: "example.com".to_string(),
+            port: Some(2222),
+            user: Some("alice".to_string()),
+            identity_file: None,
+            local_forwards: Vec::new(),
+            strict_host_checking: None,
+            user_known_hosts_file: None,
+            extra_options: Vec::new(),
+            sshx: SSHXAnnotations::default(),
+            source: SourceLocation::default(),
+        };
+
+        let cmd = SSHCommand::from_host(&host);
+
+        assert_eq!(
+            cmd.build_parts(),
+            vec!["ssh", "-p", "2222", "alice@example.com"]
+        );
+    }
+
+    #[test]
     fn test_build_returns_string() {
         let host = SSHHost {
             name: "test".to_string(),
@@ -238,7 +263,8 @@ mod tests {
         let cmd = SSHCommand::from_host(&host);
         let built = cmd.build();
 
-        assert!(!built.contains("sshpass")); // No password, so sshpass not included
+        assert!(built.starts_with("ssh "));
+        assert!(!built.contains("sshpass"));
         assert!(built.contains("-p"));
         assert!(built.contains("2222"));
         assert!(built.contains("-i"));

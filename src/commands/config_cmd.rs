@@ -369,12 +369,10 @@ fn cmd_add(cli: &cli::Cli) -> Result<(), SshxError> {
         return Ok(());
     }
 
-    let config_path: std::path::PathBuf =
-        cli.config.clone().unwrap_or_else(|| {
-            dirs::home_dir()
-                .map(|h| h.join(".ssh").join("config"))
-                .unwrap_or_else(|| std::path::PathBuf::from("~/.ssh/config"))
-        });
+    let config_path: std::path::PathBuf = match cli.config.clone() {
+        Some(path) => path,
+        None => crate::config::SshxConfig::load()?.ssh_config_path(),
+    };
 
     let existing =
         std::fs::read_to_string(&config_path).map_err(|e| SshxError::ConfigWriteFailed {

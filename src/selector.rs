@@ -25,6 +25,10 @@ impl SkimItem for HostItem {
         ))
     }
 
+    fn output(&self) -> Cow<'_, str> {
+        Cow::Borrowed(&self.host)
+    }
+
     fn display<'a>(&'a self, _context: DisplayContext<'a>) -> AnsiString<'a> {
         let alias_str = self
             .alias
@@ -103,9 +107,28 @@ pub fn select_host(index: &ConfigIndex, prefilter: Option<&str>) -> Option<Strin
         return None;
     }
 
-    output.selected_items.first().and_then(|item| {
-        item.as_any()
-            .downcast_ref::<HostItem>()
-            .map(|h| h.host.clone())
-    })
+    output
+        .selected_items
+        .first()
+        .map(|item| item.output().into_owned())
+        .filter(|host| !host.is_empty())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn host_item_output_returns_host_name() {
+        let item = HostItem {
+            host: "local-ubuntu-server".to_string(),
+            hostname: "192.168.1.113".to_string(),
+            group: None,
+            alias: None,
+            description: None,
+            port: None,
+        };
+
+        assert_eq!(item.output(), "local-ubuntu-server");
+    }
 }

@@ -115,12 +115,19 @@ impl ConfigIndex {
             .and_then(|req| self.find_host(req))
     }
 
-    pub fn load(ssh_config_path: Option<&PathBuf>) -> Result<Self, SshxError> {
-        let sshx_config = crate::config::SshxConfig::load().unwrap_or_default();
-        let config_path = ssh_config_path
-            .cloned()
-            .unwrap_or_else(|| sshx_config.ssh_config_path());
+    fn resolve_config_path(
+        ssh_config_path: Option<&PathBuf>,
+        sshx_config_path: &PathBuf,
+    ) -> Result<PathBuf, SshxError> {
+        match ssh_config_path {
+            Some(path) => Ok(path.clone()),
+            None => Ok(crate::config::SshxConfig::load_from(sshx_config_path)?.ssh_config_path()),
+        }
+    }
 
+    pub fn load(ssh_config_path: Option<&PathBuf>) -> Result<Self, SshxError> {
+        let config_path =
+            Self::resolve_config_path(ssh_config_path, &crate::config::SshxConfig::config_path())?;
         let (hosts, source_files) = crate::parser::parse_with_includes(&config_path)?;
 
         let mut index = Self::build(hosts)?;
@@ -297,5 +304,32 @@ mod tests {
         assert_eq!(index.hosts.len(), 4);
         assert_eq!(index.groups.len(), 3);
         assert_eq!(index.aliases.len(), 2);
+    }
+
+    #[test]
+    fn test_resolve_config_path_prefers_cli_override() {
+        let temp_ssh_config = PathBuf::from("/tmp/custom-ssh-config");
+        let tempdir = tempfile::tempdir().unwrap();
+        let sshx_config_path = tempdir.path().join("config.toml");
+        std::fs::write(&sshx_config_path, "invalid = toml [[[").unwrap();
+
+        let resolved =
+            ConfigIndex::resolve_config_path(Some(&temp_ssh_config), &sshx_config_path).unwrap();
+
+        assert_eq!(resolved, temp_ssh_config);
+    }
+
+    #[test]
+    fn test_resolve_config_path_errors_on_malformed_default_config() {
+        let tempdir = tempfile::tempdir().unwrap();
+        let sshx_config_path = tempdir.path().join("config.toml");
+        std::fs::write(&sshx_config_path, "invalid = toml [[[").unwrap();
+
+        let result = ConfigIndex::resolve_config_path(None, &sshx_config_path);
+
+        assert!(matches!(
+            result,
+            Err(SshxError::SshxConfigParseFailed { .. })
+        ));
     }
 }

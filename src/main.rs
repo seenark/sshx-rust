@@ -1,5 +1,4 @@
 mod cli;
-mod clipboard;
 mod commands;
 mod config;
 mod error;

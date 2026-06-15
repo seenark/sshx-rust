@@ -1,7 +1,6 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-
 use crate::error::SshxError;
 use crate::model::*;
 
@@ -72,10 +71,7 @@ pub fn parse_content(content: &str, file_path: &Path) -> Result<Vec<SSHHost>, Ss
     }
 
     if let Some(mut host) = current_host {
-        host.source.line_end = hosts
-            .last()
-            .map(|h| h.source.line_end)
-            .unwrap_or(content.lines().count());
+        host.source.line_end = content.lines().count();
         hosts.push(host);
     }
 
@@ -88,6 +84,26 @@ pub fn parse_with_includes(path: &Path) -> Result<(Vec<SSHHost>, Vec<PathBuf>), 
     let mut visited = std::collections::HashSet::new();
     parse_recursive(path, &mut all_hosts, &mut all_source_files, &mut visited)?;
     Ok((all_hosts, all_source_files))
+}
+
+fn resolve_include_pattern(pattern: &str, ssh_dir: &Path, home_dir: Option<&Path>) -> String {
+    if pattern == "~" {
+        return home_dir
+            .map(|home| home.to_string_lossy().into_owned())
+            .unwrap_or_else(|| pattern.to_string());
+    }
+
+    if let Some(stripped) = pattern.strip_prefix("~/") {
+        return home_dir
+            .map(|home| home.join(stripped).to_string_lossy().into_owned())
+            .unwrap_or_else(|| pattern.to_string());
+    }
+
+    if Path::new(pattern).is_absolute() {
+        return pattern.to_string();
+    }
+
+    ssh_dir.join(pattern).to_string_lossy().into_owned()
 }
 
 fn parse_recursive(
@@ -115,20 +131,18 @@ fn parse_recursive(
     source_files.push(path.to_path_buf());
 
     let ssh_dir = path.parent().unwrap_or(Path::new("."));
+    let home_dir = dirs::home_dir();
 
     for line in content.lines() {
         let trimmed = line.trim();
-        if let Some(pattern) = trimmed.strip_prefix("Include ") {
-            let pattern = pattern.trim();
-            let full_pattern = if pattern.starts_with('/') {
-                pattern.to_string()
-            } else {
-                ssh_dir.join(pattern).to_string_lossy().to_string()
-            };
-            if let Ok(entries) = glob::glob(&full_pattern) {
-                for entry in entries.flatten() {
-                    if entry.is_file() {
-                        parse_recursive(&entry, hosts, source_files, visited)?;
+        if let Some(patterns) = trimmed.strip_prefix("Include ") {
+            for pattern in patterns.split_whitespace() {
+                let full_pattern = resolve_include_pattern(pattern, ssh_dir, home_dir.as_deref());
+                if let Ok(entries) = glob::glob(&full_pattern) {
+                    for entry in entries.flatten() {
+                        if entry.is_file() {
+                            parse_recursive(&entry, hosts, source_files, visited)?;
+                        }
                     }
                 }
             }
@@ -189,27 +203,28 @@ fn parse_option(host: &mut SSHHost, line: &str) {
 
     let key = parts[0];
     let value = parts[1].trim();
+    let key_normalized = key.to_ascii_lowercase();
 
-    match key {
-        "HostName" => host.hostname = value.to_string(),
-        "Port" => {
+    match key_normalized.as_str() {
+        "hostname" => host.hostname = value.to_string(),
+        "port" => {
             // Silently ignore invalid port values (SSH-compatible behavior)
             if let Ok(port) = value.parse::<u16>() {
                 host.port = Some(port);
             }
         }
-        "User" => host.user = Some(value.to_string()),
-        "IdentityFile" => {
+        "user" => host.user = Some(value.to_string()),
+        "identityfile" => {
             host.identity_file = Some(PathBuf::from(
                 value.replace("~", std::env::var("HOME").unwrap_or_default().as_str()),
             ))
         }
-        "LocalForward" => {
+        "localforward" => {
             if let Some(forward) = parse_local_forward(value) {
                 host.local_forwards.push(forward);
             }
         }
-        "StrictHostKeyChecking" => {
+        "stricthostkeychecking" => {
             host.strict_host_checking = match value {
                 "yes" => Some(StrictHostChecking::Yes),
                 "no" => Some(StrictHostChecking::No),
@@ -218,7 +233,7 @@ fn parse_option(host: &mut SSHHost, line: &str) {
                 _ => None,
             };
         }
-        "UserKnownHostsFile" => host.user_known_hosts_file = Some(value.to_string()),
+        "userknownhostsfile" => host.user_known_hosts_file = Some(value.to_string()),
         _ => host
             .extra_options
             .push((key.to_string(), value.to_string())),
@@ -252,7 +267,8 @@ fn parse_local_forward(value: &str) -> Option<LocalForward> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
+    use tempfile::tempdir;
 
     fn fixture(name: &str) -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -348,9 +364,47 @@ mod tests {
         assert_eq!(hosts.len(), 2);
 
         let prod = &hosts[0];
+        let staging = &hosts[1];
+
         assert!(prod.source.line_start > 0);
         assert!(prod.source.line_end >= prod.source.line_start);
         assert_eq!(prod.source.file, path);
+        assert!(staging.source.line_start > prod.source.line_end);
+        assert!(staging.source.line_end >= staging.source.line_start);
+        assert_eq!(staging.source.file, path);
+    }
+
+    #[test]
+    fn test_parse_content_final_host_line_end_without_trailing_newline() {
+        let path = Path::new("inline_config");
+        let content = "Host one\n  HostName 1.1.1.1\nHost two\n  HostName 2.2.2.2";
+
+        let hosts = parse_content(content, path).unwrap();
+
+        assert_eq!(hosts.len(), 2);
+        assert_eq!(hosts[0].name, "one");
+        assert_eq!(hosts[0].source.line_end, 2);
+        assert_eq!(hosts[1].name, "two");
+        assert_eq!(hosts[1].source.line_start, 3);
+        assert_eq!(hosts[1].source.line_end, 4);
+    }
+
+    #[test]
+    fn test_parse_option_keywords_case_insensitively() {
+        let path = Path::new("inline_config");
+        let content = "Host github.com\n  Hostname github.com\n  User git\n  IdentityFile ~/.ssh/github/seenark\n  IdentitiesOnly yes";
+
+        let hosts = parse_content(content, path).unwrap();
+
+        assert_eq!(hosts.len(), 1);
+        assert_eq!(hosts[0].hostname, "github.com");
+        assert_eq!(hosts[0].user.as_deref(), Some("git"));
+        assert!(hosts[0].identity_file.is_some());
+        assert!(
+            hosts[0]
+                .extra_options
+                .contains(&(String::from("IdentitiesOnly"), String::from("yes")))
+        );
     }
 
     #[test]
@@ -363,12 +417,66 @@ mod tests {
     }
 
     #[test]
+    fn test_resolve_include_pattern() {
+        let ssh_dir = Path::new("/tmp/ssh");
+        let home = Path::new("/Users/tester");
+
+        assert_eq!(
+            resolve_include_pattern("~/.ssh/github/config", ssh_dir, Some(home)),
+            "/Users/tester/.ssh/github/config"
+        );
+        assert_eq!(
+            resolve_include_pattern("~", ssh_dir, Some(home)),
+            "/Users/tester"
+        );
+        assert_eq!(
+            resolve_include_pattern("included/*.conf", ssh_dir, Some(home)),
+            "/tmp/ssh/included/*.conf"
+        );
+        assert_eq!(
+            resolve_include_pattern("/etc/ssh/config", ssh_dir, Some(home)),
+            "/etc/ssh/config"
+        );
+        assert_eq!(
+            resolve_include_pattern("~/.ssh/github/config", ssh_dir, None),
+            "~/.ssh/github/config"
+        );
+    }
+
+    #[test]
     fn test_parse_with_includes() {
         let path = fixture("config_with_include");
         let (hosts, source_files) = parse_with_includes(&path).unwrap();
         assert_eq!(hosts.len(), 2);
         assert_eq!(source_files.len(), 2);
         assert!(hosts.iter().any(|h| h.name == "included-host"));
+    }
+
+    #[test]
+    fn test_parse_with_multiple_include_patterns() {
+        let tempdir = tempdir().unwrap();
+        let included_a = tempdir.path().join("included-a.conf");
+        let included_b = tempdir.path().join("included-b.conf");
+        let root = tempdir.path().join("config");
+
+        std::fs::write(&included_a, "Host included-a\n    HostName 10.0.0.1\n").unwrap();
+        std::fs::write(&included_b, "Host included-b\n    HostName 10.0.0.2\n").unwrap();
+        std::fs::write(
+            &root,
+            format!(
+                "Include {} {}\nHost root-host\n    HostName 10.0.0.3\n",
+                included_a.display(),
+                included_b.display()
+            ),
+        )
+        .unwrap();
+
+        let (hosts, _) = parse_with_includes(&root).unwrap();
+
+        assert_eq!(hosts.len(), 3);
+        assert!(hosts.iter().any(|host| host.name == "included-a"));
+        assert!(hosts.iter().any(|host| host.name == "included-b"));
+        assert!(hosts.iter().any(|host| host.name == "root-host"));
     }
 
     #[test]

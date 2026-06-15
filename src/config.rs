@@ -71,6 +71,21 @@ fn default_connect_timeout() -> u64 {
     10
 }
 
+fn expand_home(path: PathBuf) -> PathBuf {
+    if path.as_os_str() == "~" {
+        return dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
+    }
+
+    let path_str = path.to_string_lossy();
+    if let Some(stripped) = path_str.strip_prefix("~/") {
+        return dirs::home_dir()
+            .map(|home| home.join(stripped))
+            .unwrap_or(path);
+    }
+
+    path
+}
+
 impl Default for UIConfig {
     fn default() -> Self {
         Self {
@@ -131,10 +146,11 @@ impl SshxConfig {
     }
 
     pub fn ssh_config_path(&self) -> PathBuf {
-        self.general
-            .ssh_config_path
-            .clone()
-            .unwrap_or_else(|| PathBuf::from(".ssh").join("config"))
+        expand_home(self.general.ssh_config_path.clone().unwrap_or_else(|| {
+            dirs::home_dir()
+                .map(|home| home.join(".ssh").join("config"))
+                .unwrap_or_else(|| PathBuf::from(".ssh").join("config"))
+        }))
     }
 
     pub fn generate_default_toml() -> String {
@@ -156,8 +172,8 @@ mod tests {
         assert_eq!(config.ui.fuzzy_threshold, 0.4);
         assert_eq!(config.ui.host_weight, 0.7);
         assert_eq!(config.ui.hostname_weight, 0.3);
-        assert_eq!(config.ui.show_descriptions, true);
-        assert_eq!(config.ui.show_hostnames, true);
+        assert!(config.ui.show_descriptions);
+        assert!(config.ui.show_hostnames);
         assert_eq!(config.ui.group_sort, GroupSort::Alphabetical);
         assert_eq!(config.tunnel.check_interval_ms, 500);
         assert_eq!(config.tunnel.connect_timeout_s, 10);
@@ -195,7 +211,7 @@ show_descriptions = false
         .unwrap();
         let config = SshxConfig::load_from(&path).unwrap();
         assert_eq!(config.ui.fuzzy_threshold, 0.6);
-        assert_eq!(config.ui.show_descriptions, false);
+        assert!(!config.ui.show_descriptions);
         assert_eq!(config.ui.host_weight, 0.7);
         assert_eq!(config.tunnel.check_interval_ms, 500);
     }
@@ -223,7 +239,24 @@ show_descriptions = false
     fn test_ssh_config_path_default() {
         let config = SshxConfig::default();
         let ssh_path = config.ssh_config_path();
-        assert!(ssh_path.components().any(|c| c.as_os_str() == ".ssh"));
-        assert!(ssh_path.file_name().map(|n| n == "config").unwrap_or(false));
+        assert!(ssh_path.ends_with(PathBuf::from(".ssh").join("config")));
+        if dirs::home_dir().is_some() {
+            assert!(ssh_path.is_absolute());
+        }
+    }
+
+    #[test]
+    fn test_ssh_config_path_expands_tilde_override() {
+        let mut config = SshxConfig::default();
+        config.general.ssh_config_path = Some(PathBuf::from("~/custom_ssh_config"));
+
+        let ssh_path = config.ssh_config_path();
+
+        if let Some(home) = dirs::home_dir() {
+            assert_eq!(ssh_path, home.join("custom_ssh_config"));
+        } else {
+            assert_eq!(ssh_path, PathBuf::from("~/custom_ssh_config"));
+            assert!(!ssh_path.is_absolute());
+        }
     }
 }

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO="yourname/sshx"
+REPO="seenark/sshx-rust"
 BINARY="sshx"
 INSTALL_DIR="${SSHX_INSTALL_DIR:-/usr/local/bin}"
 
@@ -24,6 +24,11 @@ esac
 VERSION=$(curl -sf "https://api.github.com/repos/$REPO/releases/latest" \
   | grep '"tag_name"' \
   | sed -E 's/.*"v([^"]+)".*/\1/')
+
+if [[ -z "$VERSION" ]]; then
+  echo "✗ Could not determine latest sshx release from https://api.github.com/repos/$REPO/releases/latest"
+  exit 1
+fi
 
 echo "→ Installing sshx v$VERSION for $TARGET"
 

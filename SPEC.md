@@ -50,7 +50,6 @@ sshx config show [HOST_ALIAS]      # print raw SSH config block + annotations
 
 ```
 --config PATH     override SSH config file (default: ~/.ssh/config)
---no-clipboard    print command instead of copying to clipboard
 --dry-run         show what would happen, execute nothing
 --verbose         debug output
 --version         same as sshx version
@@ -282,10 +281,6 @@ pub enum SshxError {
     SshCommandFailed { exit_code: Option<i32> },
     // E032: ssh exited non-zero (wrong password, host unreachable, etc.)
 
-    // ── Clipboard ────────────────────────────────────────────────────
-    ClipboardUnavailable { reason: String },
-    // E040: clipboard write failed (headless server, no display, etc.)
-    // hint: use --no-clipboard flag to print instead
 
     // ── Config Wizard ────────────────────────────────────────────────
     ConfigWriteFailed { path: PathBuf, reason: String },
@@ -594,7 +589,7 @@ Data Flow
     → if requires= → tunnel lifecycle
     → SSHCommand build
     → sshpass wrap if password
-    → execute or clipboard copy
+    → execute SSH command
 
 Key Types
   SSHHost          full host + annotations

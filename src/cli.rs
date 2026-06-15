@@ -12,13 +12,6 @@ pub struct Cli {
     #[arg(long, global = true, help = "Override SSH config file path")]
     pub config: Option<PathBuf>,
 
-    #[arg(
-        long,
-        global = true,
-        help = "Print command instead of copying to clipboard"
-    )]
-    pub no_clipboard: bool,
-
     #[arg(long, global = true, help = "Show what would happen without executing")]
     pub dry_run: bool,
 

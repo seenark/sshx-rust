@@ -68,9 +68,6 @@ pub enum SshxError {
     #[error("SSH command failed")]
     SshCommandFailed { exit_code: Option<i32> },
 
-    #[error("Clipboard unavailable")]
-    ClipboardUnavailable { reason: String },
-
     #[error("Config write failed")]
     ConfigWriteFailed { path: PathBuf, reason: String },
 
@@ -109,7 +106,6 @@ impl SshxError {
             Self::SshpassNotFound { .. } => "E030",
             Self::SshNotFound { .. } => "E031",
             Self::SshCommandFailed { .. } => "E032",
-            Self::ClipboardUnavailable { .. } => "E040",
             Self::ConfigWriteFailed { .. } => "E050",
             Self::HostAlreadyExists { .. } => "E051",
             Self::InvalidHostName { .. } => "E052",
@@ -175,7 +171,6 @@ impl SshxError {
             Self::SshCommandFailed { exit_code } => {
                 format!("SSH command failed (exit code: {:?})", exit_code)
             }
-            Self::ClipboardUnavailable { reason } => format!("Clipboard unavailable: {reason}"),
             Self::ConfigWriteFailed { path, reason } => {
                 format!("Config write failed: {} — {}", path.display(), reason)
             }
@@ -209,7 +204,6 @@ impl SshxError {
             Self::SshpassNotFound => None,
             Self::SshNotFound => None,
             Self::SshCommandFailed { .. } => Some("Exit code"),
-            Self::ClipboardUnavailable { .. } => Some("Reason"),
             Self::ConfigWriteFailed { .. } => Some("Path"),
             Self::HostAlreadyExists { .. } => Some("Name"),
             Self::InvalidHostName { .. } => Some("Name"),
@@ -243,7 +237,6 @@ impl SshxError {
             Self::SshpassNotFound => None,
             Self::SshNotFound => None,
             Self::SshCommandFailed { exit_code } => Some(format!("{:?}", exit_code)),
-            Self::ClipboardUnavailable { reason } => Some(reason.clone()),
             Self::ConfigWriteFailed { path, .. } => Some(path.display().to_string()),
             Self::HostAlreadyExists { name } => Some(name.clone()),
             Self::InvalidHostName { name } => Some(name.clone()),
@@ -295,9 +288,6 @@ impl SshxError {
             }
             Self::SshNotFound { .. } => "Install OpenSSH client",
             Self::SshCommandFailed { .. } => "Verify SSH connection and credentials",
-            Self::ClipboardUnavailable { .. } => {
-                "Use --no-clipboard flag to print the command instead"
-            }
             Self::ConfigWriteFailed { .. } => "Check file permissions and disk space",
             Self::HostAlreadyExists { .. } => {
                 "Choose a different host name or edit the existing host"
@@ -399,9 +389,6 @@ mod tests {
             SshxError::SshpassNotFound,
             SshxError::SshNotFound,
             SshxError::SshCommandFailed { exit_code: Some(1) },
-            SshxError::ClipboardUnavailable {
-                reason: "test".to_string(),
-            },
             SshxError::ConfigWriteFailed {
                 path: PathBuf::from("/path"),
                 reason: "test".to_string(),
@@ -500,9 +487,6 @@ mod tests {
             SshxError::SshpassNotFound,
             SshxError::SshNotFound,
             SshxError::SshCommandFailed { exit_code: Some(1) },
-            SshxError::ClipboardUnavailable {
-                reason: "test".to_string(),
-            },
             SshxError::ConfigWriteFailed {
                 path: PathBuf::from("/path"),
                 reason: "test".to_string(),
