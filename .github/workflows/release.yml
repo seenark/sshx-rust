@@ -94,13 +94,11 @@ jobs:
       - name: Generate checksums
         run: |
           cd artifacts
+          shopt -s nullglob
           sha256sum *.tar.gz *.zip > checksums.txt
 
       - name: Create Release
         uses: softprops/action-gh-release@v3
         with:
-          files: |
-            artifacts/*.tar.gz
-            artifacts/*.zip
-            artifacts/checksums.txt
+          files: artifacts/*
           generate_release_notes: true
