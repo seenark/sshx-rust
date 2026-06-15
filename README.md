@@ -71,7 +71,42 @@ This keeps the source of truth in your SSH config, not in a second host database
 
 ## Installation
 
-### Install the latest release
+### Install with mise
+
+```sh
+mise use -g github:seenark/sshx-rust
+sshx --version
+```
+
+Equivalent config:
+
+```toml
+[tools]
+"github:seenark/sshx-rust" = "latest"
+```
+
+Release asset contract:
+
+- tags: `vX.Y.Z`
+- macOS/Linux archive names: `sshx-vX.Y.Z-<rust-target>.tar.gz`
+- Windows archive name: `sshx-vX.Y.Z-x86_64-pc-windows-msvc.zip`
+- archive root contains `sshx` on macOS/Linux and `sshx.exe` on Windows.
+
+Optional deterministic asset matching:
+
+```toml
+[tools."github:seenark/sshx-rust"]
+version = "latest"
+
+[tools."github:seenark/sshx-rust".platforms]
+linux-x64 = { asset_pattern = "sshx-v*-x86_64-unknown-linux-musl.tar.gz" }
+linux-arm64 = { asset_pattern = "sshx-v*-aarch64-unknown-linux-musl.tar.gz" }
+macos-x64 = { asset_pattern = "sshx-v*-x86_64-apple-darwin.tar.gz" }
+macos-arm64 = { asset_pattern = "sshx-v*-aarch64-apple-darwin.tar.gz" }
+windows-x64 = { asset_pattern = "sshx-v*-x86_64-pc-windows-msvc.zip" }
+```
+
+### Install with the shell installer
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/seenark/sshx-rust/main/install.sh | bash
@@ -84,7 +119,6 @@ Install to a custom directory:
 ```sh
 SSHX_INSTALL_DIR="$HOME/.local/bin" curl -fsSL https://raw.githubusercontent.com/seenark/sshx-rust/main/install.sh | bash
 ```
-
 ### Build from source
 
 Requirements:

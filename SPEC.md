@@ -407,14 +407,15 @@ connect_timeout_s = 10
 
 ```
 Platform          Target Triple                  Notes
-─────────────────────────────────────────────────────────────
-macOS arm64       aarch64-apple-darwin           M1/M2/M3
-macOS x86_64      x86_64-apple-darwin            Intel Mac
-Linux x86_64      x86_64-unknown-linux-musl      static binary
-Linux arm64       aarch64-unknown-linux-musl      static binary (Raspberry Pi etc)
+──────────────────────────────────────────────────────────────────────
+macOS arm64       aarch64-apple-darwin           tar.gz archive
+macOS x86_64      x86_64-apple-darwin            tar.gz archive
+Linux x86_64      x86_64-unknown-linux-musl      tar.gz archive
+Linux arm64       aarch64-unknown-linux-musl     tar.gz archive
+Windows x64       x86_64-pc-windows-msvc         zip archive
 ```
 
-No Windows for now.
+Windows x64 is published as a zip archive containing `sshx.exe` at the archive root.
 
 ---
 
@@ -440,12 +441,24 @@ jobs:
         include:
           - target: aarch64-apple-darwin
             os: macos-latest
+            builder: cargo
+            archive: tar.gz
           - target: x86_64-apple-darwin
             os: macos-latest
+            builder: cargo
+            archive: tar.gz
           - target: x86_64-unknown-linux-musl
             os: ubuntu-latest
+            builder: cross
+            archive: tar.gz
           - target: aarch64-unknown-linux-musl
             os: ubuntu-latest
+            builder: cross
+            archive: tar.gz
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            builder: cargo
+            archive: zip
 
     steps:
       - uses: actions/checkout@v4
@@ -455,22 +468,36 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
-      - name: Install musl tools (Linux only)
-        if: contains(matrix.target, 'musl')
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y musl-tools cross
+      - name: Install cross
+        if: matrix.builder == 'cross'
+        run: cargo install cross --locked
 
-      - name: Build
-        run: |
-          cargo build --release --target ${{ matrix.target }}
+      - name: Build with cargo
+        if: matrix.builder == 'cargo'
+        run: cargo build --release --target ${{ matrix.target }}
 
-      - name: Package binary
+      - name: Build with cross
+        if: matrix.builder == 'cross'
+        run: cross build --release --target ${{ matrix.target }}
+
+      - name: Package Unix binary
+        if: matrix.archive == 'tar.gz'
+        shell: bash
         run: |
-          BINARY=target/${{ matrix.target }}/release/sshx
           ARCHIVE=sshx-${{ github.ref_name }}-${{ matrix.target }}.tar.gz
-          tar czf $ARCHIVE -C target/${{ matrix.target }}/release sshx
-          echo "ARCHIVE=$ARCHIVE" >> $GITHUB_ENV
+          tar czf "$ARCHIVE" -C "target/${{ matrix.target }}/release" sshx
+          echo "ARCHIVE=$ARCHIVE" >> "$GITHUB_ENV"
+
+      - name: Package Windows binary
+        if: matrix.archive == 'zip'
+        shell: pwsh
+        run: |
+          $Archive = "sshx-${{ github.ref_name }}-${{ matrix.target }}.zip"
+          Remove-Item -Recurse -Force staging -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Path staging | Out-Null
+          Copy-Item "target/${{ matrix.target }}/release/sshx.exe" "staging/sshx.exe"
+          Compress-Archive -Path "staging/sshx.exe" -DestinationPath $Archive -Force
+          "ARCHIVE=$Archive" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -491,16 +518,34 @@ jobs:
       - name: Generate checksums
         run: |
           cd artifacts
-          sha256sum *.tar.gz > checksums.txt
+          sha256sum *.tar.gz *.zip > checksums.txt
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
             artifacts/*.tar.gz
+            artifacts/*.zip
             artifacts/checksums.txt
           generate_release_notes: true
 ```
+
+### mise GitHub backend
+
+- backend string: `github:seenark/sshx-rust`
+- default config:
+
+  ```toml
+  [tools]
+  "github:seenark/sshx-rust" = "latest"
+  ```
+
+- mise downloads GitHub Release assets and does not build from source.
+- asset naming/layout contract:
+  - tags: `vX.Y.Z`
+  - macOS/Linux archive names: `sshx-vX.Y.Z-<rust-target>.tar.gz`
+  - Windows archive name: `sshx-vX.Y.Z-x86_64-pc-windows-msvc.zip`
+  - archive root contains `sshx` on macOS/Linux and `sshx.exe` on Windows.
 
 ---
 
@@ -510,7 +555,7 @@ jobs:
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO="yourname/sshx"
+REPO="seenark/sshx-rust"
 BINARY="sshx"
 INSTALL_DIR="${SSHX_INSTALL_DIR:-/usr/local/bin}"
 
